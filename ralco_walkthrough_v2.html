@@ -158,9 +158,9 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
     <div class="subtitle">M&amp;T+</div>
   </div>
   <div style="display:flex;align-items:flex-end;gap:12px;justify-content:flex-end;align-items:center">
-    <div class="header-device" onclick="renameDevice()" style="cursor:pointer">
-      <span id="header-label">Sites</span><br>
-      <span id="device-name-display" style="font-size:10px;color:var(--muted)">Device</span>
+    <div id="header-crew-info" style="font-size:12px;color:var(--muted);text-align:right">
+      <span id="header-label">Loading...</span><br>
+      <span id="crew-role" style="font-size:10px;color:var(--muted)">Crew</span>
     </div>
     <div id="save-indicator" style="font-size:11px;color:var(--green);height:20px;line-height:20px;min-width:80px;text-align:right"></div>
     <button id="logout-btn" onclick="crewLogout()" style="display:none;padding:4px 8px;font-size:11px;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer">Logout</button>
@@ -544,6 +544,8 @@ const db = firebase.database();
 // Global user tracking
 let currentUser = null;
 let currentUserEmail = '';
+let crewWhitelist = ['josh@test.com']; // Whitelist emails auto-approved
+let pendingUsers = {};
 
 // ══════════════════════════════════════════════════════
 // FIREBASE AUTHENTICATION
@@ -630,7 +632,22 @@ function crewSignUp() {
     .then(user => {
       currentUser = user.user;
       currentUserEmail = user.user.email;
-      showLoginSuccess();
+      
+      // Check if email is whitelisted
+      if (crewWhitelist.includes(email)) {
+        // Auto-approve whitelisted users
+        showLoginSuccess();
+      } else {
+        // Add to pending list in Firebase
+        db.ref('pendingUsers/' + user.user.uid).set({
+          email: email,
+          createdAt: new Date().toISOString(),
+          status: 'pending'
+        });
+        
+        // Show pending message
+        showPendingApproval(email);
+      }
     })
     .catch(err => {
       errorDiv.textContent = err.message;
@@ -638,11 +655,73 @@ function crewSignUp() {
     });
 }
 
+function crewLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorDiv = document.getElementById('login-error');
+  
+  if (!email || !password) {
+    errorDiv.textContent = 'Email and password required';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  
+  auth.signInWithEmailAndPassword(email, password)
+    .then(user => {
+      currentUser = user.user;
+      currentUserEmail = user.user.email;
+      
+      // Check if whitelisted
+      if (crewWhitelist.includes(email)) {
+        showLoginSuccess();
+        return;
+      }
+      
+      // Check if approved in Firebase
+      db.ref('pendingUsers/' + user.user.uid).once('value', snapshot => {
+        const userData = snapshot.val();
+        if (userData && userData.status === 'approved') {
+          showLoginSuccess();
+        } else if (userData && userData.status === 'pending') {
+          showPendingApproval(email);
+        } else {
+          // Not in pending list, add them
+          db.ref('pendingUsers/' + user.user.uid).set({
+            email: email,
+            lastLogin: new Date().toISOString(),
+            status: 'pending'
+          });
+          showPendingApproval(email);
+        }
+      });
+    })
+    .catch(err => {
+      errorDiv.textContent = err.message;
+      errorDiv.style.display = 'block';
+    });
+}
+
+function showPendingApproval(email) {
+  const loginScreen = document.getElementById('login-screen');
+  const loginForm = loginScreen.querySelector('div[style*="max-width"]');
+  
+  loginForm.innerHTML = `
+    <h3 style="margin-bottom:16px;color:var(--gold);text-align:center">Awaiting Approval</h3>
+    <p style="color:var(--muted);font-size:12px;text-align:center;margin-bottom:16px">
+      Your account (<strong>${email}</strong>) is pending approval from the administrator.
+    </p>
+    <p style="color:var(--muted);font-size:12px;text-align:center;margin-bottom:16px">
+      You'll be notified once approved. Check back soon!
+    </p>
+    <button onclick="location.reload()" style="width:100%;padding:10px;background:var(--gold);color:#000;border:none;border-radius:4px;font-weight:700;cursor:pointer">Refresh</button>
+  `;
+}
+
 function showLoginSuccess() {
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-header').style.display = 'flex';
   document.getElementById('logout-btn').style.display = 'block';
-  document.getElementById('header-label').textContent = currentUserEmail.split('@')[0];
+  document.getElementById('header-label').textContent = currentUserEmail;
   loadSitesFromFirebase();
 }
 
@@ -651,11 +730,34 @@ auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
     currentUserEmail = user.email;
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app-header').style.display = 'flex';
-    document.getElementById('logout-btn').style.display = 'block';
-    document.getElementById('header-label').textContent = user.email.split('@')[0];
-    loadSitesFromFirebase();
+    
+    // Check if whitelisted
+    if (crewWhitelist.includes(user.email)) {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app-header').style.display = 'flex';
+      document.getElementById('logout-btn').style.display = 'block';
+      document.getElementById('header-label').textContent = user.email;
+      loadSitesFromFirebase();
+      return;
+    }
+    
+    // Check approval status
+    db.ref('pendingUsers/' + user.uid).once('value', snapshot => {
+      const userData = snapshot.val();
+      if (userData && userData.status === 'approved') {
+        // Approved
+        document.getElementById('login-screen').style.display = 'none';
+        document.getElementById('app-header').style.display = 'flex';
+        document.getElementById('logout-btn').style.display = 'block';
+        document.getElementById('header-label').textContent = user.email;
+        loadSitesFromFirebase();
+      } else {
+        // Pending or not found - show login screen
+        document.getElementById('login-screen').style.display = 'flex';
+        document.getElementById('app-header').style.display = 'none';
+        document.getElementById('logout-btn').style.display = 'none';
+      }
+    });
   } else {
     document.getElementById('login-screen').style.display = 'flex';
     document.getElementById('app-header').style.display = 'none';
