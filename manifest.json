@@ -1,7 +1,7 @@
 {
-  "name": "RALCO Field Walkthrough",
-  "short_name": "RALCO",
-  "description": "RALCO Electric field sales walkthrough and equipment counting app",
+   "name": "LogiCurrent M&T+",
+  "short_name": "LogiCurrent",
+  "description": "Field equipment maintenance testing and asset management",
   "start_url": "/ralco-walkthrough/ralco_walkthrough_v2.html",
   "display": "standalone",
   "background_color": "#0f1e2e",
