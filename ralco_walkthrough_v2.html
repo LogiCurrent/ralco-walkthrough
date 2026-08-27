@@ -74,7 +74,9 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
 .room-meta{font-size:11px;color:var(--muted);margin-top:2px}
 .room-qty-badge{font-size:20px;font-weight:800;color:var(--gold);min-width:32px;text-align:right;margin-top:2px}
 /* EQUIPMENT */
-.eq-panel{background:var(--surface);border:1px solid var(--gold);border-radius:10px;padding:14px;margin-bottom:12px}
+.eq-panel{background:var(--surface);border:1px solid var(--gold);border-radius:10px;padding:14px;margin-bottom:12px;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;max-width:600px;width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.3)}
+.eq-panel-backdrop{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999;display:none}
+.eq-panel-backdrop.open{display:block}
 .eq-panel-title{font-size:14px;font-weight:700;color:var(--gold);margin-bottom:12px}
 .eq-group-label{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;padding-top:10px;border-top:1px solid var(--border)}
 .eq-row{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px}
@@ -155,9 +157,12 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
     <div class="logo">RALCO</div>
     <div class="subtitle">Maintenance &amp; Testing+</div>
   </div>
-  <div class="header-device" onclick="renameDevice()">
-    <span id="header-label">Sites</span><br>
-    <span id="device-name-display" style="font-size:10px;color:var(--muted)">Device</span>
+  <div style="display:flex;align-items:flex-end;gap:12px;justify-content:flex-end">
+    <div class="header-device" onclick="renameDevice()" style="cursor:pointer">
+      <span id="header-label">Sites</span><br>
+      <span id="device-name-display" style="font-size:10px;color:var(--muted)">Device</span>
+    </div>
+    <div id="save-indicator" style="font-size:11px;color:var(--green);height:20px;line-height:20px;min-width:80px;text-align:right"></div>
   </div>
 </header>
 
@@ -225,7 +230,6 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
       <div class="mt"><label>Site Notes</label>
       <textarea id="f-site-notes" rows="3" style="resize:none" placeholder="Permanent notes about this site..." oninput="saveSiteField('notes',this.value)"></textarea></div>
     </div>
-    <button class="btn btn-gold btn-full" style="margin-top:0" onclick="showSiteTab('contracts')">View Contracts →</button>
   </div>
 
   <div id="site-tab-walkthrough" class="tab-view">
@@ -252,6 +256,7 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
       </div>
       <div id="room-list" class="mt"></div>
     </div>
+    <div id="eq-panel-backdrop" class="eq-panel-backdrop" onclick="closeEqPanel()"></div>
     <div id="eq-panel" style="display:none"></div>
     <div class="card" style="margin-top:12px">
       <div class="card-title">Default Service Tier</div>
@@ -342,6 +347,10 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
     <div id="field-year-panel" style="display:none">
       <div class="card">
         <div class="card-title">Field Assets <span id="field-asset-count" style="color:var(--muted);font-weight:400;font-size:11px"></span></div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <input type="text" id="start-asset-id" placeholder="Start ID (e.g., 00001)" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+          <button class="btn btn-gold btn-sm" onclick="autoAssignAssetIDs()">Assign IDs</button>
+        </div>
         <div id="field-asset-list"></div>
       </div>
       <button class="btn btn-green btn-full" onclick="exportEPMMaster()" style="margin-top:0">📥 Export EPM Master</button>
@@ -428,6 +437,11 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
       <p style="font-size:13px;color:var(--muted);margin-bottom:12px">Exports field data for this year to the EPM Master template for use in LogiCurrent Suite.</p>
       <button class="btn btn-green btn-full" style="margin-top:0" onclick="exportEPMMaster()">📥 Export EPM Master</button>
     </div>
+    <div class="card" style="margin-top:10px">
+      <div class="card-title">Arc Flash Data Collection</div>
+      <button class="btn btn-green btn-full" style="margin-top:0" onclick="exportArcFlash(false)">📥 Arc Flash Template (Pre-Populated)</button>
+      <button class="btn btn-outline btn-full" style="margin-top:8px" onclick="exportArcFlash(true)">📄 Arc Flash Template (Blank)</button>
+    </div>
   </div>
 </div>
 
@@ -466,9 +480,12 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
 <div class="modal-overlay" id="asset-editor-modal" onclick="if(event.target===this)closeAssetEditor()">
   <div class="asset-editor-modal">
     <div class="asset-editor-header">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+    <div style="display:flex;justify-content:space-between;align-items:center">
         <div id="asset-editor-title" style="font-size:15px;font-weight:700;color:var(--gold)">Asset</div>
-        <button class="btn btn-sm btn-outline" onclick="closeAssetEditor()">Done ✓</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-red btn-sm" onclick="deleteCurrentAsset()" style="padding:4px 10px">🗑 Delete</button>
+          <button class="btn btn-sm btn-outline" onclick="closeAssetEditor()">Done ✓</button>
+        </div>
       </div>
     </div>
     <div id="asset-history-summary" style="display:none;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border)"></div>
@@ -510,7 +527,7 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
 // Sites → Contracts → Years → Assets
 // ═══════════════════════════════════════════════════════
 
-const API = 'https://ralco-export.onrender.com';
+const API = 'http://localhost:5000';
 const APP_VERSION = 'v3.0';
 const CACHE_NAME = 'ralco-walkthrough-v7';
 
@@ -585,7 +602,7 @@ function showSiteScreenCached() {
   // Use cached currentSite instead of re-fetching from cloud
   if (!currentSite) { showSiteList(); return; }
   showSiteScreen();
-  showSiteTab('contracts');
+  showSiteTab('info');
 }
 
 // ═══════════════════════════════════════════════════════
@@ -879,30 +896,31 @@ const CODE_VIOLATIONS = [
 // INIT
 // ═══════════════════════════════════════════════════════
 window.onload = () => {
+  // Auto-clear localStorage on startup - rely only on backend/database
+  localStorage.clear();
+  
+  // Keyboard shortcut to clear cache: Ctrl+Shift+K (backup)
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && e.key === 'K') {
+      localStorage.clear();
+      location.reload();
+      return;
+    }
+  });
+  
   // Unregister old service workers
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
   }
-  // Pre-load sites from localStorage before any rendering
-  try {
-    const cached = lsGet('ralco_sites_cache');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed && parsed.length) {
-        sites = parsed;
-        parsed.forEach(s => syncStatus[s.id] = 'synced');
-      }
-    }
-  } catch(e) {}
 
   if (!deviceName) {
     showDeviceSetup();
-    // Still show cached sites even if device not named
-    if (sites.length) renderSiteList(sites);
   } else {
     document.getElementById('device-name-display').textContent = deviceName;
-    showSiteList();
   }
+  // ALWAYS load from backend on startup
+  showScreen('sites');
+  loadSites();
 };
 
 // ═══════════════════════════════════════════════════════
@@ -984,7 +1002,7 @@ function loadSites() {
   } catch(e) {}
 
   // Then fetch from cloud and update
-  fetch(API + '/sites')
+  fetch(API + '/api/sites')
   .then(r => r.json())
   .then(data => {
     const cloudIds = new Set(data.map(s => s.id));
@@ -1060,7 +1078,7 @@ function newSite() {
   siteAssets = [];
   _siteLoadedFromCloud = true; // new site starts empty intentionally
   // Save to cloud in background
-  fetch(API + '/sites/save', {
+  fetch(API + '/api/sites/save', {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({site, deviceId, deviceName: deviceName||'Unnamed Device'})
@@ -1105,7 +1123,7 @@ function showSite(siteId) {
   // Check if already loaded
   if (currentSite && currentSite.id === siteId) {
     showSiteScreen();
-    showSiteTab('contracts');
+    showSiteTab('info');
     return;
   }
 
@@ -1118,24 +1136,24 @@ function showSite(siteId) {
       siteAssets = [];
       _siteLoadedFromCloud = false; // mark as from cache, not cloud
       showSiteScreen();
-      showSiteTab('contracts');
+      showSiteTab('info');
     }
   } catch(e) {}
 
   // Always fetch from cloud to get latest
-  fetch(API + '/sites/' + siteId)
+  fetch(API + '/api/sites/' + siteId)
   .then(r => { if (!r.ok) throw new Error('Not found'); return r.json(); })
   .then(site => {
     currentSite = normalizeSite(site);
     // Cache to localStorage
     try { lsSet('ralco_site_' + siteId, JSON.stringify(site)); } catch(e) {}
-    return fetch(API + '/sites/' + siteId + '/assets').then(r => r.json()).catch(()=>[]);
+    return fetch(API + '/api/sites/' + siteId + '/assets').then(r => r.json()).catch(()=>[]);
   })
   .then(assets => {
     siteAssets = assets || [];
     _siteLoadedFromCloud = true;
     showSiteScreen();
-    showSiteTab('contracts');
+    showSiteTab('info');
   })
   .catch(err => {
     // Already showing from localStorage cache if we got there
@@ -1145,7 +1163,7 @@ function showSite(siteId) {
         currentSite = normalizeSite({...local, contracts:[]});
         siteAssets = [];
         showSiteScreen();
-        showSiteTab('contracts');
+        showSiteTab('info');
       } else {
         toast('Failed to load site');
       }
@@ -1156,7 +1174,7 @@ function showSite(siteId) {
 
 function deleteSite(id, name) {
   if (!confirm(`Delete ${name}? It will move to Recently Deleted for 30 days.`)) return;
-  fetch(API + '/sites/' + id, {method:'DELETE'}).catch(()=>{});
+  fetch(API + '/api/sites/' + id, {method:'DELETE'}).catch(()=>{});
   sites = sites.filter(s => s.id !== id);
   renderSiteList(sites);
   toast('Moved to Recently Deleted');
@@ -1300,10 +1318,15 @@ function saveSiteField(key, val) {
   debounceSaveSite();
 }
 
-let _saveSiteTimer = null;
 let _siteLoadedFromCloud = false; // track if site was loaded from cloud
 
+let _saveSiteTimer = null;
+let _lastSaveTime = null;
+let _hasPendingChanges = false;
+
 function debounceSaveSite() {
+  _hasPendingChanges = true;
+  updateSaveIndicator();
   clearTimeout(_saveSiteTimer);
   if (!currentSite) return;
 
@@ -1328,29 +1351,61 @@ function debounceSaveSite() {
   // Only save to cloud if loaded from cloud (safety guard)
   if (!_siteLoadedFromCloud && currentSite.id) return;
 
+  // Increase debounce to 2.5 seconds for Firebase optimization
   _saveSiteTimer = setTimeout(() => {
-    fetch(API + '/sites/save', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({site: currentSite, deviceId, deviceName: deviceName||'Unnamed Device'})
-    }).catch(()=>{});
-  }, 800);
+    saveCurrentSite();
+  }, 2500);
+}
+
+function saveCurrentSite() {
+  if (!currentSite) return;
+  
+  fetch(API + '/api/sites/save', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({site: currentSite, deviceId, deviceName: deviceName||'Unnamed Device'})
+  })
+  .then(r => {
+    _hasPendingChanges = false;
+    _lastSaveTime = new Date();
+    updateSaveIndicator();
+  })
+  .catch(()=>{});
+}
+
+function updateSaveIndicator() {
+  const indicator = document.getElementById('save-indicator');
+  if (!indicator) return;
+  
+  if (_hasPendingChanges) {
+    indicator.innerHTML = '⚠ Unsaved changes';
+    indicator.style.color = 'var(--orange)';
+  } else if (_lastSaveTime) {
+    const mins = Math.floor((Date.now() - _lastSaveTime) / 60000);
+    const label = mins === 0 ? 'Just saved' : `Saved ${mins}m ago`;
+    indicator.innerHTML = '✓ ' + label;
+    indicator.style.color = 'var(--green)';
+  } else {
+    indicator.innerHTML = '';
+  }
 }
 
 function forceSaveSite() {
-  // Explicit save — always goes through regardless of load state
   if (!currentSite) return;
   let total = 0;
   (currentSite.rooms||[]).forEach(r => {
     Object.values(r.equipment||{}).forEach(qty => { total += qty; });
   });
   currentSite.walkthroughTotal = total;
-  fetch(API + '/sites/save', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({site: currentSite, deviceId, deviceName: deviceName||'Unnamed Device'})
-  }).catch(()=>{});
+  saveCurrentSite();
 }
+
+// Auto-save safety net every 60 seconds if there are pending changes
+setInterval(() => {
+  if (_hasPendingChanges && currentSite) {
+    saveCurrentSite();
+  }
+}, 60000);
 
 // ═══════════════════════════════════════════════════════
 // CONTRACTS LIST
@@ -1399,7 +1454,7 @@ function newContract() {
     buildings:[], rooms:[], years:[],
   };
   // Save to backend
-  fetch(API + '/contracts/save', {
+  fetch(API + '/api/contracts/save', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(contract)
   }).catch(()=>{});
@@ -1414,7 +1469,7 @@ function deleteContract(contractId) {
   if (!currentSite) return;
   if (!confirm('Delete this contract and all its years?')) return;
   currentSite.contracts = (currentSite.contracts||[]).filter(c => c.id !== contractId);
-  fetch(API + '/contracts/' + contractId, {method:'DELETE'}).catch(()=>{});
+  fetch(API + '/api/contracts/' + contractId, {method:'DELETE'}).catch(()=>{});
   renderContractList();
   toast('Contract deleted');
 }
@@ -1559,7 +1614,7 @@ function saveContractField(key, val) {
 
 function saveContract() {
   if (!currentContract) return;
-  fetch(API + '/contracts/save', {
+  fetch(API + '/api/contracts/save', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(currentContract)
   }).catch(()=>{});
@@ -1635,14 +1690,87 @@ function setActiveRoom(id) {
   activeRoomId = id;
   renderRoomList();
   renderEqPanel();
-  setTimeout(() => document.getElementById('eq-panel')?.scrollIntoView({behavior:'smooth',block:'start'}), 50);
+}
+
+function closeEqPanel() {
+  activeRoomId = null;
+  const panel = document.getElementById('eq-panel');
+  const backdrop = document.getElementById('eq-panel-backdrop');
+  panel.style.display = 'none';
+  backdrop.classList.remove('open');
+  renderRoomList();
 }
 
 function deleteRoom(id) {
   if (!currentSite || !confirm('Delete room?')) return;
   currentSite.rooms = (currentSite.rooms||[]).filter(r => r.id !== id);
-  if (activeRoomId === id) { activeRoomId = null; document.getElementById('eq-panel').style.display='none'; }
+  if (activeRoomId === id) { 
+    closeEqPanel();
+  }
   debounceSaveSite(); renderRoomList();
+}
+
+function editRoomName(roomId) {
+  const room = (currentSite.rooms||[]).find(r => r.id === roomId);
+  if (!room) return;
+  
+  const oldName = room.name;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = oldName;
+  input.style.cssText = 'padding:4px;border:1px solid var(--gold);border-radius:4px;font-size:inherit;width:100%;box-sizing:border-box';
+  
+  // Find the room name element and replace it
+  const parent = event.target.parentElement;
+  const nameEl = event.target;
+  parent.replaceChild(input, nameEl);
+  input.focus();
+  input.select();
+  
+  function saveChange() {
+    const newName = input.value.trim();
+    if (newName && newName !== oldName) {
+      // Update room name
+      room.name = newName;
+      
+      // Update all assets with old room name location
+      const assetsToUpdate = siteAssets.filter(a => a.location === oldName);
+      assetsToUpdate.forEach(a => a.location = newName);
+      
+      // Save site to DB
+      fetch(API + '/api/sites/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site: currentSite })
+      }).then(() => {
+        // Save all assets to DB
+        return fetch(API + '/api/assets/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ siteId: currentSite?.id, assets: siteAssets })
+        });
+      }).then(() => {
+        toast(`✅ Renamed to "${newName}"`);
+        renderRoomList();
+        renderYearAssets();
+        renderSiteAssets();
+      }).catch(e => {
+        toast('Error: ' + e.message);
+        renderRoomList();
+      });
+      return;
+    }
+    renderRoomList();
+  }
+  
+  input.onblur = saveChange;
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      input.blur();
+    } else if (e.key === 'Escape') {
+      renderRoomList();
+    }
+  };
 }
 
 function getBuildingName(buildingId) {
@@ -1689,9 +1817,15 @@ function setRoomBuilding(roomId, buildingId) {
 
 function renderEqPanel() {
   const panel = document.getElementById('eq-panel');
+  const backdrop = document.getElementById('eq-panel-backdrop');
   const room = (currentSite.rooms||[]).find(r=>r.id===activeRoomId);
-  if (!room) { panel.style.display='none'; return; }
+  if (!room) { 
+    panel.style.display='none'; 
+    backdrop.classList.remove('open');
+    return; 
+  }
   panel.style.display = 'block';
+  backdrop.classList.add('open');
 
   const groups=[], groupMap={};
   EQUIPMENT.forEach(eq=>{
@@ -1700,7 +1834,10 @@ function renderEqPanel() {
   });
 
   const siteDefault = currentSite.walkthroughTier || 'basic';
-  let html = `<div class="eq-panel"><div class="eq-panel-title">📍 ${room.name} <span style="font-size:11px;color:var(--muted);font-weight:400">${getBuildingName(room.buildingId)}</span></div>`;
+  let html = `<div class="eq-panel"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div class="eq-panel-title">📍 ${room.name} <span style="font-size:11px;color:var(--muted);font-weight:400">${getBuildingName(room.buildingId)}</span></div>
+    <button class="btn btn-sm" onclick="closeEqPanel()" style="padding:4px 8px;font-size:12px">✕ Close</button>
+  </div>`;
 
   groups.forEach(g => {
     html += `<div class="eq-group-label">${g}</div>`;
@@ -1841,7 +1978,7 @@ function addYear(contractId) {
   const label = `C${cn}-Y${yn}`;
   const id = `y${yn}_${contract.id}`;
   const year = {id, contractId:contract.id, siteId:currentSite.id, yearNumber:yn, label, workDate:'', rep:'', status:'Scheduled', scopedAssetIds:[]};
-  fetch(API + '/years/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(year)}).catch(()=>{});
+  fetch(API + '/api/years/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(year)}).catch(()=>{});
   if (!contract.years) contract.years = [];
   contract.years.push(year);
   renderContractList();
@@ -1874,6 +2011,7 @@ function showYearScreen() {
   showScreen('year');
   renderYearInfo();
   renderYearAssets();
+  renderSiteAssets();  // Also refresh ASSETS tab
 }
 
 function showYearTab(tab) {
@@ -1896,7 +2034,7 @@ function renderYearInfo() {
 function saveYearField(key, val) {
   if (!currentYear) return;
   currentYear[key] = val;
-  fetch(API + '/years/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(currentYear)}).catch(()=>{});
+  fetch(API + '/api/years/save', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(currentYear)}).catch(()=>{});
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1963,15 +2101,20 @@ function onFieldYearChange(yearId) {
   currentYear = found;
   panel.style.display = 'block';
   renderYearAssets();
+  renderSiteAssets();  // Also refresh ASSETS tab
 }
+
+let selectedAssets = new Set(); // Track selected asset IDs
 
 function renderYearAssets() {
   const el = document.getElementById('field-asset-list');
   if (!el) return;
 
-  const btnHtml = '<div style="display:flex;gap:8px;margin-bottom:12px">' +
-    '<button class="btn btn-gold btn-sm" style="flex:1" onclick="portAssetsFromWalkthrough()">⬇ Port from Walkthrough</button>' +
-    '<button class="btn btn-outline btn-sm" style="flex:1" onclick="addNewAsset()">+ Add Asset</button>' +
+  const btnHtml = '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">' +
+    '<button class="btn btn-gold btn-sm" style="flex:1;min-width:140px" onclick="portAssetsFromWalkthrough()">⬇ Port from Walkthrough</button>' +
+    '<button class="btn btn-outline btn-sm" style="flex:1;min-width:140px" onclick="addNewAsset()">+ Add Asset</button>' +
+    (siteAssets.length > 0 ? `<label style="display:flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px"><input type="checkbox" id="select-all-assets" onchange="toggleSelectAll(this.checked)"> Select All</label>` : '') +
+    (selectedAssets.size > 0 ? `<button class="btn btn-red btn-sm" style="min-width:120px" onclick="deleteSelectedAssets()">🗑 Delete ${selectedAssets.size}</button>` : '') +
     '</div>';
 
   if (!siteAssets.length) {
@@ -1979,16 +2122,32 @@ function renderYearAssets() {
     return;
   }
 
+  // Group assets by location in WALKTHROUGH room order, not alphabetical
+  const orderedLocs = [];
   const byLoc = {};
+  
+  // First: add locations in walkthrough room order
+  (currentSite.rooms || []).forEach(room => {
+    const roomAssets = siteAssets.filter(a => a.location === room.name);
+    if (roomAssets.length > 0) {
+      orderedLocs.push(room.name);
+      byLoc[room.name] = roomAssets;
+    }
+  });
+  
+  // Second: add any remaining assets not in walkthrough (e.g., "Unassigned")
   siteAssets.forEach(a => {
     const loc = a.location || 'Unassigned';
-    if (!byLoc[loc]) byLoc[loc] = [];
-    byLoc[loc].push(a);
+    if (!byLoc[loc]) {
+      orderedLocs.push(loc);
+      byLoc[loc] = [a];
+    }
   });
 
   let assetHtml = '';
-  Object.entries(byLoc).forEach(([loc, assets]) => {
-    assetHtml += `<div class="eq-group-label">${loc}</div>`;
+  orderedLocs.forEach(loc => {
+    const assets = byLoc[loc];
+    assetHtml += `<div class="eq-group-label" onclick="editLocationName('${loc}')" style="cursor:pointer;padding:4px;border-radius:4px;transition:background 0.2s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">${loc}</div>`;
     assets.forEach(a => {
       const yearData = getYearData(a);
       const ir = yearData.ir || {};
@@ -2005,9 +2164,11 @@ function renderYearAssets() {
       const isComplete = ir.result && ut.result;
       const dot = hasIssue ? '🔴' : (isComplete ? '✅' : '⚪');
 
-      assetHtml += `<div class="asset-card" onclick="openAssetEditor('${a.id}')">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start">
-          <div style="flex:1;min-width:0">
+      const isSelected = selectedAssets.has(a.id);
+      assetHtml += `<div class="asset-card" style="${isSelected?'background:var(--surface2);border-color:var(--gold)':''}">
+        <div style="display:flex;gap:8px;align-items:flex-start">
+          <input type="checkbox" ${isSelected?'checked':''} onchange="toggleAssetSelection('${a.id}',this.checked)" style="margin-top:4px;cursor:pointer">
+          <div style="flex:1;min-width:0;cursor:pointer" onclick="openAssetEditor('${a.id}')">
             <div style="font-size:13px;font-weight:700">${a.name||'(Unnamed)'}</div>
             <div style="font-size:11px;color:var(--muted);margin-top:2px">${a.tag?'#'+a.tag+' · ':''}${a.eqType||''}</div>
           </div>
@@ -2032,6 +2193,136 @@ function getYearData(asset) {
   const entry = history.find(h => h.yearId === yearId);
   return entry || {};
 }
+
+
+function autoAssignAssetIDs() {
+  if (!currentYear || !siteAssets.length) {
+    toast('No assets to assign IDs to');
+    return;
+  }
+  
+  const input = document.getElementById('start-asset-id');
+  let startId = input.value.trim();
+  
+  if (!startId) {
+    toast('Enter a starting ID');
+    return;
+  }
+  
+  // Parse starting ID
+  let startNum = parseInt(startId.replace(/\D/g, '')) || 1;
+  const padLength = startId.replace(/\D/g, '').length || 5;
+  
+  // Group by location in WALKTHROUGH room order
+  const orderedLocs = [];
+  const byLoc = {};
+  
+  // First: add locations in walkthrough room order
+  (currentSite.rooms || []).forEach(room => {
+    const roomAssets = siteAssets.filter(a => a.location === room.name);
+    if (roomAssets.length > 0) {
+      orderedLocs.push(room.name);
+      byLoc[room.name] = roomAssets;
+    }
+  });
+  
+  // Second: add any remaining assets not in walkthrough
+  siteAssets.forEach(a => {
+    const loc = a.location || 'Unassigned';
+    if (!byLoc[loc]) {
+      orderedLocs.push(loc);
+      byLoc[loc] = [a];
+    }
+  });
+  
+  // Assign IDs in walkthrough room order
+  orderedLocs.forEach(loc => {
+    byLoc[loc].forEach(asset => {
+      asset.tag = String(startNum).padStart(padLength, '0');
+      startNum++;
+    });
+  });
+  
+  // Save all assets to database
+  fetch(API + '/api/assets/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ siteId: currentSite?.id, assets: siteAssets })
+  })
+    .then(r => r.json())
+    .then(d => {
+      toast(`✅ Assigned IDs to ${siteAssets.length} assets`);
+      renderYearAssets();
+      renderSiteAssets();
+    })
+    .catch(e => toast('Error saving IDs: ' + e.message));
+}
+
+function editLocationName(oldName) {
+  if (!siteAssets.length) return;
+  
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = oldName;
+  input.style.cssText = 'padding:4px;border:1px solid var(--gold);border-radius:4px;font-size:inherit;width:200px';
+  
+  // Find the header element and replace it
+  const el = event.target;
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+  
+  function saveChange() {
+    const newName = input.value.trim();
+    if (newName && newName !== oldName) {
+      // Update all assets with old location name
+      const assetsToUpdate = siteAssets.filter(a => a.location === oldName);
+      assetsToUpdate.forEach(a => a.location = newName);
+      
+      // Also update the walkthrough room name if it matches
+      const matchingRoom = (currentSite.rooms || []).find(r => r.name === oldName);
+      if (matchingRoom) {
+        matchingRoom.name = newName;
+      }
+      
+      // Save site to DB (for room name change)
+      fetch(API + '/api/sites/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site: currentSite })
+      }).then(() => {
+        // Save assets to database
+        return fetch(API + '/api/assets/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ siteId: currentSite?.id, assets: siteAssets })
+        });
+      })
+        .then(r => r.json())
+        .then(() => {
+          toast(`✅ Renamed to "${newName}"`);
+          renderYearAssets();
+          renderSiteAssets();
+        })
+        .catch(e => {
+          toast('Error: ' + e.message);
+          renderYearAssets();
+        });
+      return;
+    }
+    renderYearAssets();
+  }
+  
+  input.onblur = saveChange;
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      input.blur();
+    } else if (e.key === 'Escape') {
+      renderYearAssets();
+    }
+  };
+}
+
 
 function portAssetsFromWalkthrough() {
   if (!currentContract || !currentSite) return;
@@ -2063,12 +2354,13 @@ function portAssetsFromWalkthrough() {
   siteAssets = [...siteAssets, ...newAssets];
   // Save to backend
   if (newAssets.length) {
-    fetch(API + '/assets/save', {
+    fetch(API + '/api/assets/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({siteId: currentSite.id, assets: newAssets})
     }).catch(()=>{});
   }
   renderYearAssets();
+  renderSiteAssets();  // Also refresh ASSETS tab
   renderSiteAssets();
   if (added) toast(`Ported ${added} asset${added!==1?'s':''} from walkthrough`);
   else toast('All walkthrough assets already ported');
@@ -2145,12 +2437,13 @@ function closeAssetEditor() {
   document.getElementById('asset-editor-modal').classList.remove('open');
   currentAssetId = null;
   renderYearAssets();
+  renderSiteAssets();  // Also refresh ASSETS tab
 }
 
 function saveCurrentAsset() {
   const asset = siteAssets.find(a=>a.id===currentAssetId); if(!asset) return;
   // Save to backend
-  fetch(API + '/assets/save', {
+  fetch(API + '/api/assets/save', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({siteId:currentSite?.id, assets:[asset]})
   }).catch(()=>{});
@@ -2226,12 +2519,54 @@ function addViolation() {
 function deleteAsset(id) {
   if (!confirm('Delete this asset?')) return;
   siteAssets = siteAssets.filter(a=>a.id!==id);
-  fetch(API+'/assets/'+id, {method:'DELETE'}).catch(()=>{});
+  fetch(API+'/api/assets/'+id, {method:'DELETE'}).catch(()=>{});
   closeAssetEditor();
+}
+
+function toggleAssetSelection(id, checked) {
+  if (checked) {
+    selectedAssets.add(id);
+  } else {
+    selectedAssets.delete(id);
+  }
+  renderYearAssets();
+}
+
+function toggleSelectAll(checked) {
+  if (checked) {
+    siteAssets.forEach(a => selectedAssets.add(a.id));
+  } else {
+    selectedAssets.clear();
+  }
+  renderYearAssets();
+}
+
+function deleteSelectedAssets() {
+  if (selectedAssets.size === 0) return;
+  if (!confirm(`Delete ${selectedAssets.size} asset${selectedAssets.size!==1?'s':''}?`)) return;
+  
+  selectedAssets.forEach(id => {
+    siteAssets = siteAssets.filter(a => a.id !== id);
+    fetch(API+'/api/assets/'+id, {method:'DELETE'}).catch(()=>{});
+  });
+  
+  selectedAssets.clear();
+  renderYearAssets();
+  debounceSaveSite();
 }
 
 function renderAssetEditorFull() {
   const a = getCurrentAsset(); if(!a) return;
+
+function deleteCurrentAsset() {
+  const a = getCurrentAsset();
+  if (!a || !confirm('Delete this asset?')) return;
+  siteAssets = siteAssets.filter(x => x.id !== a.id);
+  fetch(API+'/api/assets/'+a.id, {method:'DELETE'}).catch(()=>{});
+  debounceSaveSite();
+  closeAssetEditor();
+  renderYearAssets();
+}
   const isDeEn = currentContract && (currentContract.tier==='full_den'||currentContract.tier==='full_all');
   const entry = getOrCreateYearEntry(a);
   const irResult = entry.ir?.result||'';
@@ -2625,27 +2960,160 @@ function renderSiteAssets() {
     el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">No assets documented yet.<br>Assets are added from within a contract year.</div>';
     return;
   }
+  
   const byLoc={};
   siteAssets.forEach(a=>{ const l=a.location||'Unassigned'; if(!byLoc[l])byLoc[l]=[]; byLoc[l].push(a); });
+  
   let html = '';
   Object.entries(byLoc).forEach(([loc,assets])=>{
     html+=`<div class="eq-group-label">${loc}</div>`;
     assets.forEach(a=>{
+      // Calculate status indicators like FIELD tab
       const histCount = (a.serviceHistory||[]).length;
-      html+=`<div class="asset-card">
-        <div style="font-size:13px;font-weight:700">${a.name||'(Unnamed)'}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${a.tag?'#'+a.tag+' · ':''}${a.eqType||''}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${histCount} service record${histCount!==1?'s':''}</div>
+      
+      // For each service history entry, check for failures
+      let hasAnyFail = false;
+      let completedYears = 0;
+      (a.serviceHistory||[]).forEach(entry => {
+        const ir = entry.ir || {};
+        const ut = entry.ut || {};
+        const en = entry.energized || {};
+        const ins = entry.insulation || {};
+        const dlro = entry.dlro || {};
+        const tq = entry.torque || {};
+        const violations = entry.codeViolations || [];
+        
+        const hasFail = [ir.result, ut.result, en.summary, ins.result, dlro.result, tq.result].includes('FAIL');
+        if (hasFail) hasAnyFail = true;
+        
+        const isComplete = ir.result && ut.result;
+        if (isComplete) completedYears++;
+        
+        const codeCount = violations.filter(v=>v.article).length;
+        if (codeCount > 0) hasAnyFail = true;
+      });
+      
+      const isComplete = completedYears > 0 && completedYears === histCount;
+      const dot = hasAnyFail ? '🔴' : (isComplete ? '✅' : '⚪');
+      
+      html+=`<div class="asset-card" onclick="showAssetSummary('${a.id}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700">${a.name||'(Unnamed)'}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${a.tag?'#'+a.tag+' · ':''}${a.eqType||''}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px">${histCount} service record${histCount!==1?'s':''}</div>
+          </div>
+          <div style="font-size:16px;margin-left:8px;cursor:pointer">${dot}</div>
+        </div>
       </div>`;
     });
   });
+  
   el.innerHTML = html;
 }
 
-// ═══════════════════════════════════════════════════════
-// EXPORTS
-// ═══════════════════════════════════════════════════════
+function showAssetSummary(assetId) {
+  const asset = siteAssets.find(a => a.id === assetId);
+  if (!asset) return;
+  
+  currentAssetId = assetId;
+  
+  // Build summary HTML
+  let html = `
+    <div style="padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:16px">
+        <div>
+          <div style="font-size:18px;font-weight:700;color:var(--gold)">${asset.name || '(Unnamed)'}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:4px">#${asset.tag || 'N/A'}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onclick="deleteAssetFromSummary('${asset.id}')" class="btn btn-red btn-sm" style="padding:4px 8px;font-size:12px">🗑 Delete</button>
+          <button onclick="closeAssetSummary()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)">✕</button>
+        </div>
+      </div>
+      
+      <div style="background:var(--surface2);padding:12px;border-radius:6px;margin-bottom:16px;font-size:12px">
+        <div><strong>Type:</strong> ${asset.eqType || '—'}</div>
+        <div><strong>Location:</strong> ${asset.location || '—'}</div>
+        <div><strong>Manufacturer:</strong> ${asset.manufacturer || '—'}</div>
+        <div><strong>Model:</strong> ${asset.model || '—'}</div>
+        <div><strong>Voltage:</strong> ${asset.voltage || '—'}</div>
+      </div>
+  `;
+  
+  // Show all service history entries
+  (asset.serviceHistory || []).forEach(entry => {
+    const ir = entry.ir || {};
+    const ut = entry.ut || {};
+    const en = entry.energized || {};
+    const violations = entry.codeViolations || [];
+    
+    const hasFailures = [ir.result, ut.result, en.summary].includes('FAIL');
+    const hasViolations = violations.filter(v => v.article).length > 0;
+    
+    html += `
+      <div style="background:${hasFailures || hasViolations ? 'rgba(255,68,68,0.1)' : 'var(--surface2)'};padding:12px;border-radius:6px;margin-bottom:12px;border-left:3px solid ${hasFailures || hasViolations ? 'var(--red)' : 'var(--gold)'}">
+        <div style="font-weight:700;margin-bottom:8px;color:${hasFailures || hasViolations ? 'var(--red)' : 'var(--gold)'}">${entry.label || 'Service Entry'}</div>
+        
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;margin-bottom:8px">
+          <div>
+            <strong>IR:</strong> <span style="color:${ir.result === 'FAIL' ? 'var(--red)' : 'inherit'}">${ir.result || '—'}</span>
+            ${ir.result ? `<div style="font-size:10px;color:var(--muted)">${ir.component || ''}</div>` : ''}
+          </div>
+          <div>
+            <strong>UT:</strong> <span style="color:${ut.result === 'FAIL' ? 'var(--red)' : 'inherit'}">${ut.result || '—'}</span>
+          </div>
+          <div>
+            <strong>Energized:</strong> <span style="color:${en.summary === 'FAIL' ? 'var(--red)' : 'inherit'}">${en.summary || '—'}</span>
+          </div>
+        </div>
+        
+        ${hasViolations ? `
+          <div style="background:rgba(255,68,68,0.2);padding:8px;border-radius:4px;font-size:11px;color:var(--red)">
+            <strong>⚠ Violations:</strong><br>
+            ${violations.filter(v => v.article).map(v => `${v.article} (${v.sev})`).join('<br>')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+  
+  html += `</div>`;
+  
+  // Show in a modal or overlay
+  const modal = document.createElement('div');
+  modal.id = 'asset-summary-modal';
+  modal.style.cssText = `
+    position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);
+    display:flex;align-items:center;justify-content:center;z-index:9999;
+  `;
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:12px;width:90%;max-height:90vh;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.3)">
+      ${html}
+    </div>
+  `;
+  modal.onclick = (e) => {
+    if (e.target === modal) closeAssetSummary();
+  };
+  
+  document.body.appendChild(modal);
+}
+
+function closeAssetSummary() {
+  const modal = document.getElementById('asset-summary-modal');
+  if (modal) modal.remove();
+  currentAssetId = null;
+}
 function exportEPMMaster() {
+
+function deleteAssetFromSummary(assetId) {
+  if (!confirm('Delete this asset?')) return;
+  siteAssets = siteAssets.filter(a => a.id !== assetId);
+  fetch(API+'/api/assets/'+assetId, {method:'DELETE'}).catch(()=>{});
+  debounceSaveSite();
+  closeAssetSummary();
+  renderSiteAssets();
+}
   if (!currentYear || !currentSite) return;
   const assets = siteAssets.filter(a=>{
     const scoped = currentYear.scopedAssetIds;
@@ -2653,7 +3121,7 @@ function exportEPMMaster() {
   });
   if (!assets.length) { toast('No assets for this year'); return; }
   toast('Generating EPM Master...');
-  fetch(API + '/export/epm', {
+  fetch(API + '/api/export/epm', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({site:currentSite, year:currentYear, assets})
   })
@@ -2664,6 +3132,28 @@ function exportEPMMaster() {
     toast('Downloaded: '+fname);
   })
   .catch(err=>toast('Export failed: '+err.message));
+}
+
+function exportArcFlash(blank=false) {
+  if (!currentYear || !currentSite) return;
+  const assets = blank ? [] : siteAssets.filter(a=>{
+    const scoped = currentYear.scopedAssetIds;
+    return !scoped?.length || scoped.includes(a.id);
+  });
+  const mode = blank ? 'Blank' : (assets.length ? 'Pre-Populated' : 'Blank');
+  toast(`Generating Arc Flash Template (${mode})...`);
+  fetch(API + '/export/arcflash', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({site:currentSite, year:currentYear, assets, blank})
+  })
+  .then(r=>{ if(!r.ok) return r.json().then(e=>{throw new Error(e.error||'Failed');}); return r.blob(); })
+  .then(blob=>{
+    const modeTag = (blank || !assets.length) ? 'Blank' : 'Populated';
+    const fname = sanitizeFilename(currentSite.customer) + `_${currentYear.label}_ArcFlash_${modeTag}.xlsx`;
+    downloadBlob(blob, fname);
+    toast('Downloaded: '+fname);
+  })
+  .catch(err=>toast('Arc Flash export failed: '+err.message));
 }
 
 function downloadBlob(blob, filename) {
@@ -2683,7 +3173,7 @@ function sanitizeFilename(name) {
 // ═══════════════════════════════════════════════════════
 function showDeletedSites() {
   showScreen('deleted');
-  fetch(API + '/sites/deleted')
+  fetch(API + '/api/sites/deleted')
   .then(r=>r.json())
   .then(data=>{
     const el = document.getElementById('deleted-list');
@@ -2700,7 +3190,7 @@ function showDeletedSites() {
 }
 
 function restoreSite(id, name) {
-  fetch(API+'/sites/'+id+'/restore', {method:'POST'}).catch(()=>{});
+  fetch(API+'/api/sites/'+id+'/restore', {method:'POST'}).catch(()=>{});
   toast(name + ' restored');
   showDeletedSites();
 }
@@ -2709,7 +3199,7 @@ function restoreSite(id, name) {
 // BACKUP / RESTORE
 // ═══════════════════════════════════════════════════════
 function backupAllData() {
-  fetch(API+'/sites')
+  fetch(API+'/api/sites')
   .then(r=>r.json())
   .then(siteList=>{
     const blob = new Blob([JSON.stringify({sites:siteList, exportedAt:new Date().toISOString()}, null, 2)], {type:'application/json'});
@@ -2791,12 +3281,13 @@ function portAssetsFromWalkthrough() {
   siteAssets = [...siteAssets, ...newAssets];
   // Save to backend
   if (newAssets.length) {
-    fetch(API + '/assets/save', {
+    fetch(API + '/api/assets/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({siteId: currentSite.id, assets: newAssets})
     }).catch(()=>{});
   }
   renderYearAssets();
+  renderSiteAssets();  // Also refresh ASSETS tab
   renderSiteAssets();
   if (added) toast(`Ported ${added} asset${added!==1?'s':''} from walkthrough`);
   else toast('All walkthrough assets already ported');
@@ -2873,12 +3364,13 @@ function closeAssetEditor() {
   document.getElementById('asset-editor-modal').classList.remove('open');
   currentAssetId = null;
   renderYearAssets();
+  renderSiteAssets();  // Also refresh ASSETS tab
 }
 
 function saveCurrentAsset() {
   const asset = siteAssets.find(a=>a.id===currentAssetId); if(!asset) return;
   // Save to backend
-  fetch(API + '/assets/save', {
+  fetch(API + '/api/assets/save', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({siteId:currentSite?.id, assets:[asset]})
   }).catch(()=>{});
@@ -2954,7 +3446,7 @@ function addViolation() {
 function deleteAsset(id) {
   if (!confirm('Delete this asset?')) return;
   siteAssets = siteAssets.filter(a=>a.id!==id);
-  fetch(API+'/assets/'+id, {method:'DELETE'}).catch(()=>{});
+  fetch(API+'/api/assets/'+id, {method:'DELETE'}).catch(()=>{});
   closeAssetEditor();
 }
 
@@ -3346,38 +3838,11 @@ function copySummaryText() {
   navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'));
 }
 
-function renderSiteAssets() {
-  const el = document.getElementById('site-asset-list');
-  if (!el) return;
-  if (!siteAssets.length) {
-    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">No assets documented yet.<br>Assets are added from within a contract year.</div>';
-    return;
-  }
-  const byLoc={};
-  siteAssets.forEach(a=>{ const l=a.location||'Unassigned'; if(!byLoc[l])byLoc[l]=[]; byLoc[l].push(a); });
-  let html = '';
-  Object.entries(byLoc).forEach(([loc,assets])=>{
-    html+=`<div class="eq-group-label">${loc}</div>`;
-    assets.forEach(a=>{
-      const histCount = (a.serviceHistory||[]).length;
-      html+=`<div class="asset-card">
-        <div style="font-size:13px;font-weight:700">${a.name||'(Unnamed)'}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${a.tag?'#'+a.tag+' · ':''}${a.eqType||''}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px">${histCount} service record${histCount!==1?'s':''}</div>
-      </div>`;
-    });
-  });
-  el.innerHTML = html;
-}
-
-// ═══════════════════════════════════════════════════════
-// EXPORTS
-// ═══════════════════════════════════════════════════════
 function exportSalesBuilder() {
   if (!currentSite) return;
   if (!(currentSite.rooms||[]).length) { toast('No rooms in walkthrough yet'); return; }
   toast('Generating Sales Builder...');
-  fetch(API + '/export/sales', {
+  fetch(API + '/api/export/sales', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
       contract:{rooms:currentSite.rooms||[], buildings:currentSite.buildings||[], tier:currentSite.walkthroughTier||'basic', contractNumber:1},
@@ -3402,7 +3867,7 @@ function exportEPMMaster() {
   });
   if (!assets.length) { toast('No assets for this year'); return; }
   toast('Generating EPM Master...');
-  fetch(API + '/export/epm', {
+  fetch(API + '/api/export/epm', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({site:currentSite, year:currentYear, assets})
   })
@@ -3413,6 +3878,28 @@ function exportEPMMaster() {
     toast('Downloaded: '+fname);
   })
   .catch(err=>toast('Export failed: '+err.message));
+}
+
+function exportArcFlash(blank=false) {
+  if (!currentYear || !currentSite) return;
+  const assets = blank ? [] : siteAssets.filter(a=>{
+    const scoped = currentYear.scopedAssetIds;
+    return !scoped?.length || scoped.includes(a.id);
+  });
+  const mode = blank ? 'Blank' : (assets.length ? 'Pre-Populated' : 'Blank');
+  toast(`Generating Arc Flash Template (${mode})...`);
+  fetch(API + '/export/arcflash', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({site:currentSite, year:currentYear, assets, blank})
+  })
+  .then(r=>{ if(!r.ok) return r.json().then(e=>{throw new Error(e.error||'Failed');}); return r.blob(); })
+  .then(blob=>{
+    const modeTag = (blank || !assets.length) ? 'Blank' : 'Populated';
+    const fname = sanitizeFilename(currentSite.customer) + `_${currentYear.label}_ArcFlash_${modeTag}.xlsx`;
+    downloadBlob(blob, fname);
+    toast('Downloaded: '+fname);
+  })
+  .catch(err=>toast('Arc Flash export failed: '+err.message));
 }
 
 function downloadBlob(blob, filename) {
@@ -3432,7 +3919,7 @@ function sanitizeFilename(name) {
 // ═══════════════════════════════════════════════════════
 function showDeletedSites() {
   showScreen('deleted');
-  fetch(API + '/sites/deleted')
+  fetch(API + '/api/sites/deleted')
   .then(r=>r.json())
   .then(data=>{
     const el = document.getElementById('deleted-list');
@@ -3449,7 +3936,7 @@ function showDeletedSites() {
 }
 
 function restoreSite(id, name) {
-  fetch(API+'/sites/'+id+'/restore', {method:'POST'}).catch(()=>{});
+  fetch(API+'/api/sites/'+id+'/restore', {method:'POST'}).catch(()=>{});
   toast(name + ' restored');
   showDeletedSites();
 }
@@ -3458,7 +3945,7 @@ function restoreSite(id, name) {
 // BACKUP / RESTORE
 // ═══════════════════════════════════════════════════════
 function backupAllData() {
-  fetch(API+'/sites')
+  fetch(API+'/api/sites')
   .then(r=>r.json())
   .then(siteList=>{
     const blob = new Blob([JSON.stringify({sites:siteList, exportedAt:new Date().toISOString()}, null, 2)], {type:'application/json'});
