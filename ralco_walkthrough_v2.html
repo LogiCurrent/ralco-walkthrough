@@ -555,15 +555,12 @@ function toggleSignUp() {
   const loginScreen = document.getElementById('login-screen');
   const email = document.getElementById('login-email');
   const password = document.getElementById('login-password');
-  const signInBtn = document.querySelector('#login-screen button[onclick="crewLogin()"]');
+  const signInBtn = loginScreen.querySelector('button:nth-child(3)');
   const toggleBtn = event.target;
   
   if (loginScreen.dataset.mode === 'signin') {
     loginScreen.dataset.mode = 'signup';
     toggleBtn.textContent = 'Already have account?';
-    toggleBtn.style.background = 'var(--gold)';
-    toggleBtn.style.color = '#000';
-    toggleBtn.style.border = 'none';
     email.placeholder = 'Enter new email';
     password.placeholder = 'Create password (6+ chars)';
     signInBtn.textContent = 'Create Account';
@@ -571,9 +568,6 @@ function toggleSignUp() {
   } else {
     loginScreen.dataset.mode = 'signin';
     toggleBtn.textContent = 'New Crew Member?';
-    toggleBtn.style.background = 'transparent';
-    toggleBtn.style.color = 'var(--muted)';
-    toggleBtn.style.border = '1px solid var(--border)';
     email.placeholder = 'Email';
     password.placeholder = 'Password';
     signInBtn.textContent = 'Sign In';
@@ -591,18 +585,6 @@ function crewLogout() {
     document.getElementById('login-email').value = '';
     document.getElementById('login-password').value = '';
     document.getElementById('login-error').style.display = 'none';
-    
-    // Reset login form to signin mode
-    const loginScreen = document.getElementById('login-screen');
-    loginScreen.dataset.mode = 'signin';
-    const toggleBtn = loginScreen.querySelector('button[onclick="toggleSignUp()"]');
-    if (toggleBtn) {
-      toggleBtn.textContent = 'New Crew Member?';
-      toggleBtn.style.background = 'transparent';
-      toggleBtn.style.color = 'var(--muted)';
-      toggleBtn.style.border = '1px solid var(--border)';
-    }
-    
     toast('Logged out');
   });
 }
@@ -622,20 +604,14 @@ function crewSignUp() {
     .then(user => {
       currentUser = user.user;
       currentUserEmail = user.user.email;
-      
-      // Check if email is whitelisted
       if (crewWhitelist.includes(email)) {
-        // Auto-approve whitelisted users
         showLoginSuccess();
       } else {
-        // Add to pending list in Firebase
         db.ref('pendingUsers/' + user.user.uid).set({
           email: email,
           createdAt: new Date().toISOString(),
           status: 'pending'
         });
-        
-        // Show pending message
         showPendingApproval(email);
       }
     })
@@ -660,27 +636,15 @@ function crewLogin() {
     .then(user => {
       currentUser = user.user;
       currentUserEmail = user.user.email;
-      
-      // Check if whitelisted
       if (crewWhitelist.includes(email)) {
         showLoginSuccess();
         return;
       }
-      
-      // Check if approved in Firebase
       db.ref('pendingUsers/' + user.user.uid).once('value', snapshot => {
         const userData = snapshot.val();
         if (userData && userData.status === 'approved') {
           showLoginSuccess();
-        } else if (userData && userData.status === 'pending') {
-          showPendingApproval(email);
         } else {
-          // Not in pending list, add them
-          db.ref('pendingUsers/' + user.user.uid).set({
-            email: email,
-            lastLogin: new Date().toISOString(),
-            status: 'pending'
-          });
           showPendingApproval(email);
         }
       });
@@ -693,16 +657,9 @@ function crewLogin() {
 
 function showPendingApproval(email) {
   const loginScreen = document.getElementById('login-screen');
-  const loginForm = loginScreen.querySelector('div[style*="max-width"]');
-  
-  loginForm.innerHTML = `
+  loginScreen.querySelector('div[style*="max-width"]').innerHTML = `
     <h3 style="margin-bottom:16px;color:var(--gold);text-align:center">Awaiting Approval</h3>
-    <p style="color:var(--muted);font-size:12px;text-align:center;margin-bottom:16px">
-      Your account (<strong>${email}</strong>) is pending approval from the administrator.
-    </p>
-    <p style="color:var(--muted);font-size:12px;text-align:center;margin-bottom:16px">
-      You'll be notified once approved. Check back soon!
-    </p>
+    <p style="color:var(--muted);font-size:12px;text-align:center;margin-bottom:16px">Your account is pending approval. Check back soon!</p>
     <button onclick="location.reload()" style="width:100%;padding:10px;background:var(--gold);color:#000;border:none;border-radius:4px;font-weight:700;cursor:pointer">Refresh</button>
   `;
 }
@@ -715,37 +672,21 @@ function showLoginSuccess() {
   loadSitesFromFirebase();
 }
 
-// Monitor auth state on page load
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
     currentUserEmail = user.email;
-    
-    // Check if whitelisted
     if (crewWhitelist.includes(user.email)) {
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('app-header').style.display = 'flex';
-      document.getElementById('logout-btn').style.display = 'block';
-      document.getElementById('header-label').textContent = user.email;
-      loadSitesFromFirebase();
+      showLoginSuccess();
       return;
     }
-    
-    // Check approval status
     db.ref('pendingUsers/' + user.uid).once('value', snapshot => {
       const userData = snapshot.val();
       if (userData && userData.status === 'approved') {
-        // Approved
-        document.getElementById('login-screen').style.display = 'none';
-        document.getElementById('app-header').style.display = 'flex';
-        document.getElementById('logout-btn').style.display = 'block';
-        document.getElementById('header-label').textContent = user.email;
-        loadSitesFromFirebase();
+        showLoginSuccess();
       } else {
-        // Pending or not found - show login screen
         document.getElementById('login-screen').style.display = 'flex';
         document.getElementById('app-header').style.display = 'none';
-        document.getElementById('logout-btn').style.display = 'none';
       }
     });
   } else {
