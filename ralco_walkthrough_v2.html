@@ -4,13 +4,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>RALCO Maintenance &amp; Testing+</title>
+<title>LogiCurrent M&T+</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="RALCO M&amp;T+">
+<meta name="apple-mobile-web-app-title" content="LogiCurrent M&amp;T+">
 <meta name="theme-color" content="#1A3A5C">
 <style>
 :root{--navy:#1A3A5C;--gold:#FFAA00;--red:#CC2229;--bg:#0f1e2e;--surface:#162840;--surface2:#1e3550;--border:#2a4a6a;--text:#e8f0f8;--muted:#7a9bbf;--green:#2ecc71;--font:'Segoe UI',system-ui,sans-serif}
@@ -150,19 +150,40 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
   </div>
 </div>
 
+<!-- ══════════════ FIREBASE LOGIN SCREEN ══════════════ -->
+<div id="login-screen" style="display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:100vh;background:var(--bg);padding:20px;gap:20px">
+  <div style="text-align:center;margin-bottom:30px">
+    <div style="font-size:48px;font-weight:800;letter-spacing:2px;color:var(--gold);margin-bottom:8px">LogiCurrent</div>
+    <div style="font-size:18px;color:var(--muted);letter-spacing:1px">M&amp;T+</div>
+  </div>
+  
+  <div style="width:100%;max-width:300px;background:var(--surface);padding:24px;border-radius:8px;border:1px solid var(--border)">
+    <h3 style="margin-bottom:16px;color:var(--gold);text-align:center">Crew Login</h3>
+    
+    <input type="email" id="login-email" placeholder="Email" style="width:100%;padding:10px;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px">
+    <input type="password" id="login-password" placeholder="Password" style="width:100%;padding:10px;margin-bottom:16px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px">
+    
+    <button onclick="crewLogin()" style="width:100%;padding:10px;background:var(--gold);color:#000;border:none;border-radius:4px;font-weight:700;cursor:pointer;margin-bottom:8px">Sign In</button>
+    <button onclick="toggleSignUp()" style="width:100%;padding:10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer">New Crew Member?</button>
+    
+    <div id="login-error" style="color:var(--red);font-size:12px;margin-top:12px;text-align:center;display:none"></div>
+  </div>
+</div>
+
 <!-- HEADER -->
-<header>
+<header style="display:none" id="app-header">
   <div id="header-back" class="header-back" onclick="goBack()">‹ Back</div>
   <div class="header-title">
-    <div class="logo">RALCO</div>
-    <div class="subtitle">Maintenance &amp; Testing+</div>
+    <div class="logo">LogiCurrent</div>
+    <div class="subtitle">M&amp;T+</div>
   </div>
-  <div style="display:flex;align-items:flex-end;gap:12px;justify-content:flex-end">
+  <div style="display:flex;align-items:flex-end;gap:12px;justify-content:flex-end;align-items:center">
     <div class="header-device" onclick="renameDevice()" style="cursor:pointer">
       <span id="header-label">Sites</span><br>
       <span id="device-name-display" style="font-size:10px;color:var(--muted)">Device</span>
     </div>
     <div id="save-indicator" style="font-size:11px;color:var(--green);height:20px;line-height:20px;min-width:80px;text-align:right"></div>
+    <button id="logout-btn" onclick="crewLogout()" style="display:none;padding:4px 8px;font-size:11px;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer">Logout</button>
   </div>
 </header>
 
@@ -520,7 +541,148 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
 
 <div class="toast" id="toast"></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-database.js"></script>
 <script>
+// Firebase Configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyCXJ2QIgeyqq_rC13uSHoJgB2AZPrx4ykw",
+  authDomain: "logicurrent.firebaseapp.com",
+  databaseURL: "https://logicurrent-default-rtdb.firebaseio.com",
+  projectId: "logicurrent",
+  storageBucket: "logicurrent.firebasestorage.app",
+  messagingSenderId: "862945864559",
+  appId: "1:862945864559:web:244f09832c78758b51969a"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.database();
+
+// Global user tracking
+let currentUser = null;
+let currentUserEmail = '';
+
+// ══════════════════════════════════════════════════════
+// FIREBASE AUTHENTICATION
+// ══════════════════════════════════════════════════════
+
+function crewLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorDiv = document.getElementById('login-error');
+  
+  if (!email || !password) {
+    errorDiv.textContent = 'Email and password required';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  
+  auth.signInWithEmailAndPassword(email, password)
+    .then(user => {
+      currentUser = user.user;
+      currentUserEmail = user.user.email;
+      showLoginSuccess();
+    })
+    .catch(err => {
+      errorDiv.textContent = err.message;
+      errorDiv.style.display = 'block';
+    });
+}
+
+function toggleSignUp() {
+  const loginScreen = document.getElementById('login-screen');
+  const email = document.getElementById('login-email');
+  const password = document.getElementById('login-password');
+  const signInBtn = document.querySelector('#login-screen button[onclick="crewLogin()"]');
+  const toggleBtn = event.target;
+  
+  if (loginScreen.dataset.mode === 'signin') {
+    loginScreen.dataset.mode = 'signup';
+    toggleBtn.textContent = 'Already have account?';
+    toggleBtn.style.background = 'var(--gold)';
+    toggleBtn.style.color = '#000';
+    toggleBtn.style.border = 'none';
+    email.placeholder = 'Enter new email';
+    password.placeholder = 'Create password (6+ chars)';
+    signInBtn.textContent = 'Create Account';
+    signInBtn.onclick = function() { crewSignUp(); };
+  } else {
+    loginScreen.dataset.mode = 'signin';
+    toggleBtn.textContent = 'New Crew Member?';
+    toggleBtn.style.background = 'transparent';
+    toggleBtn.style.color = 'var(--muted)';
+    toggleBtn.style.border = '1px solid var(--border)';
+    email.placeholder = 'Email';
+    password.placeholder = 'Password';
+    signInBtn.textContent = 'Sign In';
+    signInBtn.onclick = function() { crewLogin(); };
+  }
+}
+
+function crewLogout() {
+  auth.signOut().then(() => {
+    currentUser = null;
+    currentUserEmail = '';
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'none';
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
+    toast('Logged out');
+  });
+}
+
+function crewSignUp() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorDiv = document.getElementById('login-error');
+  
+  if (!email || password.length < 6) {
+    errorDiv.textContent = 'Email required, password 6+ chars';
+    errorDiv.style.display = 'block';
+    return;
+  }
+  
+  auth.createUserWithEmailAndPassword(email, password)
+    .then(user => {
+      currentUser = user.user;
+      currentUserEmail = user.user.email;
+      showLoginSuccess();
+    })
+    .catch(err => {
+      errorDiv.textContent = err.message;
+      errorDiv.style.display = 'block';
+    });
+}
+
+function showLoginSuccess() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-header').style.display = 'flex';
+  document.getElementById('logout-btn').style.display = 'block';
+  document.getElementById('header-label').textContent = currentUserEmail.split('@')[0];
+  loadSitesFromFirebase();
+}
+
+// Monitor auth state on page load
+auth.onAuthStateChanged(user => {
+  if (user) {
+    currentUser = user;
+    currentUserEmail = user.email;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('logout-btn').style.display = 'block';
+    document.getElementById('header-label').textContent = user.email.split('@')[0];
+    loadSitesFromFirebase();
+  } else {
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'none';
+  }
+});
+
 
 // ═══════════════════════════════════════════════════════
 // RALCO FIELD WALKTHROUGH v3
@@ -988,6 +1150,12 @@ function showSiteList() {
 }
 
 function loadSites() {
+  // When using Firebase, call the Firebase version instead
+  if (typeof db !== 'undefined' && currentUser) {
+    loadSitesFromFirebase();
+    return;
+  }
+  
   // ALWAYS read from localStorage first for instant display
   try {
     const cached = lsGet('ralco_sites_cache');
@@ -1001,8 +1169,39 @@ function loadSites() {
     }
   } catch(e) {}
 
-  // Then fetch from cloud and update
-  fetch(API + '/api/sites')
+  // Then fetch from cloud and update (Firebase only)
+  if (!currentUser) return;
+  
+  db.ref('sites').once('value', snapshot => {
+    const cloudData = snapshot.val() || {};
+    sites = Object.keys(cloudData).map(id => ({ id, ...cloudData[id] }));
+    
+    // Cache locally
+    try { lsSet('ralco_sites_cache', JSON.stringify(sites)); } catch(e) {}
+    
+    renderSiteList(sites);
+    toast('Synced — ' + sites.length + ' site' + (sites.length!==1?'s':'') + ' loaded');
+  }).catch(err => {
+    toast('Failed to load sites: ' + err.message);
+  });
+}
+
+function loadSitesFromFirebase() {
+  if (!currentUser) return;
+  
+  db.ref('sites').on('value', snapshot => {
+    const cloudData = snapshot.val() || {};
+    sites = Object.keys(cloudData).map(id => ({ id, ...cloudData[id] }));
+    
+    // Cache locally
+    try { lsSet('ralco_sites_cache', JSON.stringify(sites)); } catch(e) {}
+    
+    if (sites.length === 0) {
+      showScreen('sites');
+    }
+    renderSiteList(sites);
+  });
+}
   .then(r => r.json())
   .then(data => {
     const cloudIds = new Set(data.map(s => s.id));
@@ -1068,21 +1267,25 @@ function renderSiteList(list) {
 }
 
 function newSite() {
+  if (!currentUser) { toast('Must be logged in'); return; }
+  
   const id = 'site_' + Date.now();
   const site = {
     id, customer:'', address:'', contact:'', phone:'', notes:'',
     contracts:[], buildings:[], rooms:[], walkthroughDate:'', walkthroughRep:'',
     deviceId, deviceName: deviceName||'Unnamed Device',
+    createdBy: currentUserEmail,
+    createdAt: new Date().toISOString()
   };
   currentSite = site;
   siteAssets = [];
-  _siteLoadedFromCloud = true; // new site starts empty intentionally
-  // Save to cloud in background
-  fetch(API + '/api/sites/save', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({site, deviceId, deviceName: deviceName||'Unnamed Device'})
-  }).then(()=>{ syncStatus[site.id]='synced'; toast('Site saved to cloud'); }).catch(()=>toast('Saved locally — will sync when online'));
+  _siteLoadedFromCloud = true;
+  
+  // Save to Firebase in background
+  db.ref('sites/' + site.id).set(site)
+    .then(()=>{ syncStatus[site.id]='synced'; toast('Site saved'); })
+    .catch(()=>toast('Saved locally — will sync when online'));
+  
   // Add to local list
   sites.unshift(site);
   syncStatus[site.id] = 'local';
@@ -1358,19 +1561,27 @@ function debounceSaveSite() {
 }
 
 function saveCurrentSite() {
-  if (!currentSite) return;
+  if (!currentSite || !currentUser) return;
   
-  fetch(API + '/api/sites/save', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({site: currentSite, deviceId, deviceName: deviceName||'Unnamed Device'})
-  })
-  .then(r => {
-    _hasPendingChanges = false;
-    _lastSaveTime = new Date();
-    updateSaveIndicator();
-  })
-  .catch(()=>{});
+  // Add metadata for audit trail
+  const siteData = {
+    ...currentSite,
+    lastSavedBy: currentUserEmail,
+    lastSavedAt: new Date().toISOString(),
+    deviceId,
+    deviceName: deviceName||'Unnamed Device'
+  };
+  
+  db.ref('sites/' + currentSite.id).set(siteData)
+    .then(() => {
+      _hasPendingChanges = false;
+      _lastSaveTime = new Date();
+      updateSaveIndicator();
+    })
+    .catch(err => {
+      console.error('Save failed:', err);
+      toast('Failed to save: ' + err.message);
+    });
 }
 
 function updateSaveIndicator() {
@@ -2547,7 +2758,7 @@ function deleteSelectedAssets() {
   
   selectedAssets.forEach(id => {
     siteAssets = siteAssets.filter(a => a.id !== id);
-    fetch(API+'/api/assets/'+id, {method:'DELETE'}).catch(()=>{});
+    // With Firebase, assets are part of currentSite, no separate delete needed
   });
   
   selectedAssets.clear();
@@ -3109,7 +3320,7 @@ function exportEPMMaster() {
 function deleteAssetFromSummary(assetId) {
   if (!confirm('Delete this asset?')) return;
   siteAssets = siteAssets.filter(a => a.id !== assetId);
-  fetch(API+'/api/assets/'+assetId, {method:'DELETE'}).catch(()=>{});
+  // With Firebase, assets are part of currentSite, deletion handled by debounceSaveSite
   debounceSaveSite();
   closeAssetSummary();
   renderSiteAssets();
