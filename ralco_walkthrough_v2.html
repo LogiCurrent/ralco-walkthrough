@@ -186,7 +186,6 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
     <button class="btn btn-outline btn-sm" onclick="loadSites()" style="flex:1">🔄 Sync</button>
     <button class="btn btn-outline btn-sm" onclick="backupAllData()" style="flex:1">💾 Backup</button>
     <button class="btn btn-outline btn-sm" onclick="showDeletedSites()" style="flex:1">🗑 Deleted</button>
-    <button class="btn btn-outline btn-sm" onclick="renameDevice()" style="flex:1">✏️ <span id="device-name-display2">Device</span></button>
   </div>
   <input type="file" id="restore-input" accept=".json" style="display:none" onchange="doRestore(event)">
 </div>
@@ -544,7 +543,7 @@ const db = firebase.database();
 // Global user tracking
 let currentUser = null;
 let currentUserEmail = '';
-let crewWhitelist = ['josh@test.com']; // Whitelist emails auto-approved
+let crewWhitelist = ['jmcginnis@ralcoelectric.com']; // Whitelist emails auto-approved
 let pendingUsers = {};
 
 // ══════════════════════════════════════════════════════
@@ -613,6 +612,19 @@ function crewLogout() {
     document.getElementById('logout-btn').style.display = 'none';
     document.getElementById('login-email').value = '';
     document.getElementById('login-password').value = '';
+    document.getElementById('login-error').style.display = 'none';
+    
+    // Reset login form to signin mode
+    const loginScreen = document.getElementById('login-screen');
+    loginScreen.dataset.mode = 'signin';
+    const toggleBtn = loginScreen.querySelector('button[onclick="toggleSignUp()"]');
+    if (toggleBtn) {
+      toggleBtn.textContent = 'New Crew Member?';
+      toggleBtn.style.background = 'transparent';
+      toggleBtn.style.color = 'var(--muted)';
+      toggleBtn.style.border = '1px solid var(--border)';
+    }
+    
     toast('Logged out');
   });
 }
@@ -1157,14 +1169,8 @@ window.onload = () => {
     navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
   }
 
-  if (!deviceName) {
-    showDeviceSetup();
-  } else {
-    document.getElementById('device-name-display').textContent = deviceName;
-  }
-  // ALWAYS load from backend on startup
-  showScreen('sites');
-  loadSites();
+  // Device setup removed — using Firebase auth instead
+  // showScreen('sites') will be called by auth state listener
 };
 
 // ═══════════════════════════════════════════════════════
