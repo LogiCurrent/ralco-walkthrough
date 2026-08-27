@@ -138,6 +138,7 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
 .device-setup-banner{display:none;background:var(--navy);border-bottom:2px solid var(--gold);padding:16px}
 .device-rename-box{background:var(--surface);border:1px solid var(--gold);border-radius:16px;padding:28px 20px;width:calc(100% - 40px);max-width:400px}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -783,9 +784,15 @@ auth.onAuthStateChanged(user => {
 // Sites → Contracts → Years → Assets
 // ═══════════════════════════════════════════════════════
 
-const API = 'http://localhost:5000';
+// Flask API deprecated - using Firebase Realtime Database only
+// const API = 'http://localhost:5000';
 const APP_VERSION = 'v3.0';
 const CACHE_NAME = 'ralco-walkthrough-v7';
+
+// Debug: Log Firebase initialization
+console.log('🔥 Firebase initialized');
+console.log('🔥 Auth:', typeof auth !== 'undefined' ? 'Ready' : 'Not loaded');
+console.log('🔥 Database:', typeof db !== 'undefined' ? 'Ready' : 'Not loaded');
 
 // ── Storage ──────────────────────────────────────────────────
 var _store = {};
@@ -1411,44 +1418,59 @@ function showSite(siteId) {
     }
   } catch(e) {}
 
-  // Always fetch from cloud to get latest
-  fetch(API + '/api/sites/' + siteId)
-  .then(r => { if (!r.ok) throw new Error('Not found'); return r.json(); })
-  .then(site => {
-    currentSite = normalizeSite(site);
-    // Cache to localStorage
-    try { lsSet('ralco_site_' + siteId, JSON.stringify(site)); } catch(e) {}
-    return fetch(API + '/api/sites/' + siteId + '/assets').then(r => r.json()).catch(()=>[]);
-  })
-  .then(assets => {
-    siteAssets = assets || [];
-    _siteLoadedFromCloud = true;
-    showSiteScreen();
-    showSiteTab('info');
-  })
-  .catch(err => {
-    // Already showing from localStorage cache if we got there
-    if (!currentSite) {
-      const local = sites.find(s => s.id === siteId);
-      if (local) {
-        currentSite = normalizeSite({...local, contracts:[]});
-        siteAssets = [];
+  // Fetch from Firebase
+  if (currentUser && typeof db !== 'undefined') {
+    db.ref('sites/' + siteId).once('value', snapshot => {
+      const site = snapshot.val();
+      if (site) {
+        currentSite = normalizeSite({id: siteId, ...site});
+        siteAssets = (currentSite.assets ? Object.values(currentSite.assets) : []);
+        // Cache to localStorage
+        try { lsSet('ralco_site_' + siteId, JSON.stringify({id: siteId, ...site})); } catch(e) {}
+        _siteLoadedFromCloud = true;
         showSiteScreen();
         showSiteTab('info');
       } else {
-        toast('Failed to load site');
+        toast('Site not found in Firebase');
       }
+    }).catch(err => {
+      toast('Failed to load site: ' + err.message);
+    });
+  } else {
+    // Fallback to localStorage if Firebase not available
+    const local = sites.find(s => s.id === siteId);
+    if (local) {
+      currentSite = normalizeSite({...local, contracts:[]});
+      siteAssets = [];
+      _siteLoadedFromCloud = false;
+      showSiteScreen();
+      showSiteTab('info');
+    } else {
+      toast('Failed to load site');
     }
-    _siteLoadedFromCloud = true; // allow saves even if cloud failed
-  });
+  }
 }
 
 function deleteSite(id, name) {
   if (!confirm(`Delete ${name}? It will move to Recently Deleted for 30 days.`)) return;
-  fetch(API + '/api/sites/' + id, {method:'DELETE'}).catch(()=>{});
-  sites = sites.filter(s => s.id !== id);
-  renderSiteList(sites);
-  toast('Moved to Recently Deleted');
+  
+  if (currentUser && typeof db !== 'undefined') {
+    // Mark as deleted in Firebase
+    db.ref('sites/' + id).update({
+      deletedAt: new Date().toISOString(),
+      deletedBy: currentUserEmail
+    }).then(() => {
+      sites = sites.filter(s => s.id !== id);
+      renderSiteList(sites);
+      toast('Moved to Recently Deleted');
+    }).catch(err => {
+      toast('Failed to delete: ' + err.message);
+    });
+  } else {
+    sites = sites.filter(s => s.id !== id);
+    renderSiteList(sites);
+    toast('Moved to Recently Deleted');
+  }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2016,27 +2038,12 @@ function editRoomName(roomId) {
       const assetsToUpdate = siteAssets.filter(a => a.location === oldName);
       assetsToUpdate.forEach(a => a.location = newName);
       
-      // Save site to DB
-      fetch(API + '/api/sites/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ site: currentSite })
-      }).then(() => {
-        // Save all assets to DB
-        return fetch(API + '/api/assets/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ siteId: currentSite?.id, assets: siteAssets })
-        });
-      }).then(() => {
-        toast(`✅ Renamed to "${newName}"`);
-        renderRoomList();
-        renderYearAssets();
-        renderSiteAssets();
-      }).catch(e => {
-        toast('Error: ' + e.message);
-        renderRoomList();
-      });
+      // Save site to Firebase
+      debounceSaveSite();
+      toast(`✅ Renamed to "${newName}"`);
+      renderRoomList();
+      renderYearAssets();
+      renderSiteAssets();
       return;
     }
     renderRoomList();
@@ -2406,7 +2413,7 @@ function renderYearAssets() {
   const byLoc = {};
   
   // First: add locations in walkthrough room order
-  (currentSite.rooms || []).forEach(room => {
+  (currentSite.walkthrough_data?.rooms || []).forEach(room => {
     const roomAssets = siteAssets.filter(a => a.location === room.name);
     if (roomAssets.length > 0) {
       orderedLocs.push(room.name);
@@ -2497,7 +2504,7 @@ function autoAssignAssetIDs() {
   const byLoc = {};
   
   // First: add locations in walkthrough room order
-  (currentSite.rooms || []).forEach(room => {
+  (currentSite.walkthrough_data?.rooms || []).forEach(room => {
     const roomAssets = siteAssets.filter(a => a.location === room.name);
     if (roomAssets.length > 0) {
       orderedLocs.push(room.name);
@@ -3383,16 +3390,7 @@ function closeAssetSummary() {
   if (modal) modal.remove();
   currentAssetId = null;
 }
-function exportEPMMaster() {
 
-function deleteAssetFromSummary(assetId) {
-  if (!confirm('Delete this asset?')) return;
-  siteAssets = siteAssets.filter(a => a.id !== assetId);
-  // With Firebase, assets are part of currentSite, deletion handled by debounceSaveSite
-  debounceSaveSite();
-  closeAssetSummary();
-  renderSiteAssets();
-}
   if (!currentYear || !currentSite) return;
   const assets = siteAssets.filter(a=>{
     const scoped = currentYear.scopedAssetIds;
@@ -4117,9 +4115,7 @@ function copySummaryText() {
   navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'));
 }
 
-function exportSalesBuilder() {
-  if (!currentSite) return;
-  if (!(currentSite.rooms||[]).length) { toast('No rooms in walkthrough yet'); return; }
+
   toast('Generating Sales Builder...');
   fetch(API + '/api/export/sales', {
     method:'POST', headers:{'Content-Type':'application/json'},
@@ -4138,12 +4134,7 @@ function exportSalesBuilder() {
   .catch(err=>toast('Export failed: '+err.message));
 }
 
-function exportEPMMaster() {
-  if (!currentYear || !currentSite) return;
-  const assets = siteAssets.filter(a=>{
-    const scoped = currentYear.scopedAssetIds;
-    return !scoped?.length || scoped.includes(a.id);
-  });
+);
   if (!assets.length) { toast('No assets for this year'); return; }
   toast('Generating EPM Master...');
   fetch(API + '/api/export/epm', {
@@ -4267,6 +4258,415 @@ function toast(msg) {
   el.classList.add('show');
   setTimeout(()=>el.classList.remove('show'), 2800);
 }
+
+
+
+
+// ============ EXPORT FUNCTIONS ============
+// ============================================
+// EXCEL EXPORT BUILDER (SheetJS Integration)
+// ============================================
+
+/**
+ * EPM MASTER EXPORT
+ * Generates epm_template.xlsx with all sheets
+ */
+async function exportEPMMaster() {
+  if (!currentSite) {
+    alert('No site loaded. Load a site first.');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  
+  // 1. EQUIPMENT INFORMATION sheet
+  const equipmentData = [
+    ['Asset Tag', 'Functional Name', 'Location', 'Equipment Type', 'Manufacturer', 'Model', 'Serial #', 'Voltage', 'Criticality', 'Maint. Status', 'Health Score', 'Program Status', 'Notes']
+  ];
+  
+  if (currentSite.assets) {
+    Object.values(currentSite.assets).forEach((asset, idx) => {
+      equipmentData.push([
+        asset.tag || (idx + 1),
+        asset.functionalName || '',
+        asset.location || '',
+        asset.equipmentType || '',
+        asset.manufacturer || '',
+        asset.model || '',
+        asset.serialNumber || '',
+        asset.voltage || '',
+        asset.criticality || '',
+        asset.maintStatus || '',
+        '', // Health Score (calculated)
+        '', // Program Status (calculated)
+        asset.notes || ''
+      ]);
+    });
+  }
+  
+  const equipmentWS = XLSX.utils.aoa_to_sheet(equipmentData);
+  XLSX.utils.book_append_sheet(wb, equipmentWS, 'Equipment Information');
+
+  // 2. MASTER DASHBOARD sheet (will reference Equipment sheet)
+  const dashboardData = [
+    ['Asset Tag', 'Functional Name', 'Location', 'Equipment Type', 'Energized', 'Insul', 'DLRO', 'Torque', 'IR', 'US', 'Code', 'OVERALL STATUS']
+  ];
+  
+  if (currentSite.assets) {
+    Object.values(currentSite.assets).forEach((asset, idx) => {
+      dashboardData.push([
+        asset.tag || (idx + 1),
+        asset.functionalName || '',
+        asset.location || '',
+        asset.equipmentType || '',
+        '', // Energized (from Energized Data sheet)
+        '', // Insul
+        '', // DLRO
+        '', // Torque
+        '', // IR
+        '', // US
+        '', // Code
+        ''  // OVERALL STATUS
+      ]);
+    });
+  }
+  
+  const dashboardWS = XLSX.utils.aoa_to_sheet(dashboardData);
+  XLSX.utils.book_append_sheet(wb, dashboardWS, 'Master Dashboard');
+
+  // 3. CODE VIOLATIONS sheet
+  const violationsData = [
+    ['Tag', 'Name', 'Loc', 'Violation 1', 'Sev 1', 'Corr 1?', 'Violation 2', 'Sev 2', 'Corr 2?', 'Violation 3', 'Sev 3', 'Corr 3?', 'Violation 4', 'Sev 4', 'Corr 4?', 'Violation 5', 'Sev 5', 'Corr 5?', 'Notes', 'Net Points', 'Status', 'Result']
+  ];
+  
+  if (currentSite.assets) {
+    Object.values(currentSite.assets).forEach((asset, idx) => {
+      const row = [
+        asset.tag || (idx + 1),
+        asset.functionalName || '',
+        asset.location || ''
+      ];
+      // Add 5 violation slots
+      for (let i = 0; i < 5; i++) {
+        row.push('', '', '');
+      }
+      row.push('', '', '', ''); // Notes, Net Points, Status, Result
+      violationsData.push(row);
+    });
+  }
+  
+  const violationsWS = XLSX.utils.aoa_to_sheet(violationsData);
+  XLSX.utils.book_append_sheet(wb, violationsWS, 'Code Violations');
+
+  // 4. INFRARED sheet
+  const irData = [
+    ['Tag', 'Name', 'Loc', 'Phase (Point)', 'Component', 'Result', 'Notes']
+  ];
+  
+  if (currentSite.assets) {
+    Object.values(currentSite.assets).forEach((asset, idx) => {
+      irData.push([
+        asset.tag || (idx + 1),
+        asset.functionalName || '',
+        asset.location || '',
+        '', '', '', ''
+      ]);
+    });
+  }
+  
+  const irWS = XLSX.utils.aoa_to_sheet(irData);
+  XLSX.utils.book_append_sheet(wb, irWS, 'Infrared');
+
+  // 5. ULTRASONIC sheet
+  const usData = [
+    ['Tag', 'Name', 'Loc', 'Component', 'Failure Mode', 'dB Level', 'Result', 'Notes']
+  ];
+  
+  if (currentSite.assets) {
+    Object.values(currentSite.assets).forEach((asset, idx) => {
+      usData.push([
+        asset.tag || (idx + 1),
+        asset.functionalName || '',
+        asset.location || '',
+        '', '', '', '', ''
+      ]);
+    });
+  }
+  
+  const usWS = XLSX.utils.aoa_to_sheet(usData);
+  XLSX.utils.book_append_sheet(wb, usWS, 'Ultrasonic');
+
+  // 6. ENERGIZED DATA sheet
+  const energizedData = [
+    ['Tag', 'Name', 'Loc', 'Phase', 'Wire', 'V-AB', 'V-BC', 'V-CA', 'AvgV', 'V-Imb%', 'A-A', 'A-B', 'A-C', 'AvgA', 'Rated Amps', 'OCPD', 'Load%', 'I-Imb%', 'Analysis', 'Summary']
+  ];
+  
+  if (currentSite.assets) {
+    Object.values(currentSite.assets).forEach((asset, idx) => {
+      energizedData.push([
+        asset.tag || (idx + 1),
+        asset.functionalName || '',
+        asset.location || '',
+        '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''
+      ]);
+    });
+  }
+  
+  const energizedWS = XLSX.utils.aoa_to_sheet(energizedData);
+  XLSX.utils.book_append_sheet(wb, energizedWS, 'Energized Data');
+
+  // 7. INSULATION sheet
+  const insulationData = [
+    ['Tag', 'Name', 'Loc', 'TestV', 'Ph-Ph', 'Ph-G', 'PI', 'Temp', 'Result', 'Notes']
+  ];
+  
+  if (currentSite.assets) {
+    Object.values(currentSite.assets).forEach((asset, idx) => {
+      insulationData.push([
+        asset.tag || (idx + 1),
+        asset.functionalName || '',
+        asset.location || '',
+        '', '', '', '', '', '', ''
+      ]);
+    });
+  }
+  
+  const insulationWS = XLSX.utils.aoa_to_sheet(insulationData);
+  XLSX.utils.book_append_sheet(wb, insulationWS, 'Insulation');
+
+  // 8. DLRO sheet
+  const dlroData = [
+    ['Tag', 'Name', 'Loc', 'Ph-A', 'Ph-B', 'Ph-C', 'Dev%', 'Result', 'Notes']
+  ];
+  
+  if (currentSite.assets) {
+    Object.values(currentSite.assets).forEach((asset, idx) => {
+      dlroData.push([
+        asset.tag || (idx + 1),
+        asset.functionalName || '',
+        asset.location || '',
+        '', '', '', '', '', ''
+      ]);
+    });
+  }
+  
+  const dlroWS = XLSX.utils.aoa_to_sheet(dlroData);
+  XLSX.utils.book_append_sheet(wb, dlroWS, 'DLRO');
+
+  // 9. TORQUE sheet
+  const torqueData = [
+    ['Tag', 'Name', 'Loc', 'Phase', 'Connection Type', 'Spec', 'Verified?', 'Result', 'Notes']
+  ];
+  
+  if (currentSite.assets) {
+    Object.values(currentSite.assets).forEach((asset, idx) => {
+      torqueData.push([
+        asset.tag || (idx + 1),
+        asset.functionalName || '',
+        asset.location || '',
+        '', '', '', '', '', ''
+      ]);
+    });
+  }
+  
+  const torqueWS = XLSX.utils.aoa_to_sheet(torqueData);
+  XLSX.utils.book_append_sheet(wb, torqueWS, 'Torque');
+
+  // 10. HIDDEN_DATA sheet (Violation Library - from your master list)
+  const hiddenData = [
+    ['480V Primary Transformer - Oil Filled <5000kVA', 'PASS', 'Yes', 'Life Safety (High)', 'Verified (Current)', '', '', 'Single Phase', '2-Wire', 'Breaker (Line)', 'Arcing', 'A-Phase', 'Condition of Maintenance / AF Labeling and IR Loading', 'Critical (5pts)']
+    // Add more as needed - this is simplified for now
+  ];
+  
+  const hiddenWS = XLSX.utils.aoa_to_sheet(hiddenData);
+  XLSX.utils.book_append_sheet(wb, hiddenWS, 'Hidden_Data');
+
+  // 11. SITE & ROOM PAGES sheet
+  const roomData = [
+    ['Page Type', 'Location', 'Violation 1', 'Sev 1', 'Corr 1?', 'Violation 2', 'Sev 2', 'Corr 2?', 'Violation 3', 'Sev 3', 'Corr 3?', 'Violation 4', 'Sev 4', 'Corr 4?', 'Violation 5', 'Sev 5', 'Corr 5?', 'Notes']
+  ];
+  
+  const roomWS = XLSX.utils.aoa_to_sheet(roomData);
+  XLSX.utils.book_append_sheet(wb, roomWS, 'Site & Room Pages');
+
+  // Download
+  XLSX.writeFile(wb, `EPM_Master_${currentSite.name}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showNotification('✓ EPM Master exported', 'green');
+}
+
+/**
+ * SALES BUILDER EXPORT
+ * Generates template.xlsx with 3-year scope and pricing
+ */
+async function exportSalesBuilder() {
+  if (!currentSite) {
+    alert('No site loaded. Load a site first.');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // 1. BLDGS & ROOMS sheet
+  const roomsData = [
+    ['If there are not multiple buildings, do not modify this column', 'Modify this column to name each "room" or "location" where equipment is located, using the customer\'s description']
+  ];
+  
+  // Add rooms from current site
+  if (currentSite.walkthrough_data && currentSite.walkthrough_data.rooms) {
+    Object.values(currentSite.walkthrough_data.rooms).forEach(room => {
+      roomsData.push(['Main Bldg.', room.name || '']);
+    });
+  } else {
+    // Placeholder rows
+    for (let i = 0; i < 30; i++) {
+      roomsData.push(['Main Bldg.', '']);
+    }
+  }
+  
+  const roomsWS = XLSX.utils.aoa_to_sheet(roomsData);
+  XLSX.utils.book_append_sheet(wb, roomsWS, 'Bldgs & Rooms');
+
+  // 2. HOURS sheet (lookup table)
+  const hoursData = [
+    ['600 Volt and below', 'Full EPM', 'De-energized Maint.', 'IR', 'Ultrasonic', 'A-F Collection', 'Pri.Breaker', 'Sec. Breaker', 'PwrFact (partial)', 'PwrFact (xfmr/CB)', 'Panel Schd.', 'Oil Sample', 'Basic EPM'],
+    ['Switchgear - Incoming Main Service (Per Section)', 2, 3.4833, 0.5833, 0.25, 1.45, 1, 0.75, '', '', 1, '', '=D2+E2'],
+    ['  Switchgear Insulated Case Breakers (Bus Mounted)', 0.3333, 4, 0.1667, 0.1667, 0.25, 0.5, '', '', '', '', '', '=D3+E3'],
+    ['  SwitchGear Drawout Breakers', 0.3333, 4, 0.1667, 0.1, 0.25, '', 0.75, '', '', '', '', '=D4+E4'],
+    ['Distribution Switchboard Multi Cover (Per Section)', 1.1167, 0.9333, 0.3333, 0.25, 0.8833, 0.5, '', '', '', 1, '', '=D5+E5']
+  ];
+  
+  const hoursWS = XLSX.utils.aoa_to_sheet(hoursData);
+  XLSX.utils.book_append_sheet(wb, hoursWS, 'Hours');
+
+  // 3. COMPONENTS YR 1, 2, 3 sheets (simplified - user fills in counts)
+  const createComponentsSheet = (year) => {
+    const data = [
+      ['Building', 'Room', '600 Volt and below', 'Total Counted', 'Basic EPM', 'Full EPM', 'De-Energized', 'IR', 'Ultrasonic', 'A-F Collection', 'Pri.Breaker', 'Sec. Breaker', 'PwrFact (partial)', 'PwrFact (xfmr/CB)', 'Panel Schd.', 'Oil Sample', 'ESA', 'Total Hours', 'Total pcs. priced']
+    ];
+    
+    // Add room rows
+    let roomCount = 0;
+    if (currentSite.walkthrough_data && currentSite.walkthrough_data.rooms) {
+      Object.values(currentSite.walkthrough_data.rooms).forEach(room => {
+        data.push([
+          "='Bldgs & Rooms'!$A$2",
+          `='Bldgs & Rooms'!$B$${roomCount + 2}`,
+          '=Hours!$A$2',
+          '',
+          '', '', '', '', '', '', '', '', '', '', '', '', '',
+          '=IF(SUMPRODUCT((E:Q)*1)=0,0,E*INDEX(Hours!M:M,MATCH(C,Hours!$A:$A,0))+F*INDEX(Hours!B:B,MATCH(C,Hours!$A:$A,0)))',
+          '=MAX(E+F,G,H,I,J,K,L,M,N,O,P,Q)'
+        ]);
+        roomCount++;
+      });
+    } else {
+      for (let i = 0; i < 30; i++) {
+        data.push([
+          "='Bldgs & Rooms'!$A$2",
+          `='Bldgs & Rooms'!$B$${i + 2}`,
+          '=Hours!$A$2',
+          '', '', '', '', '', '', '', '', '', '', '', '', '', '',
+          '',
+          ''
+        ]);
+      }
+    }
+    
+    return XLSX.utils.aoa_to_sheet(data);
+  };
+  
+  XLSX.utils.book_append_sheet(wb, createComponentsSheet(1), 'Components Yr 1');
+  XLSX.utils.book_append_sheet(wb, createComponentsSheet(2), 'Components Yr 2');
+  XLSX.utils.book_append_sheet(wb, createComponentsSheet(3), 'Components Yr 3');
+
+  // 4. TOTALS sheet (for pricing)
+  const totalsData = [
+    ['Hourly Rates', 'Straight time', 'Overtime', 'Doubletime', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Overhead (Cost)', 75.2, '=B2*1.5', '=B2*2', '', 'NFPA 70E Price per seat =', '', 500],
+    ['Billing Rate', 165, 247.5, 330],
+    ['Prem. Factor', '', '=IF(B3=0,"",C3/B3)', '=IF(B3=0,"",D3/B3)'],
+    ['', '', 'Facility Factor *', '', '', '', '', 'Travel Time Factor']
+  ];
+  
+  const totalsWS = XLSX.utils.aoa_to_sheet(totalsData);
+  XLSX.utils.book_append_sheet(wb, totalsWS, 'Totals');
+
+  // 5. PRICE CALCULATOR sheet
+  const priceCalcData = [
+    ['RALCO Electric — Sales Price Calculator'],
+    ['Enter Target Margin'],
+    ['⚠  Fill in YELLOW cells only (All other cells calculate automatically!) ⚠'],
+    [''],
+    ['Year', 'Builder Sale Price', 'Builder Gross Profit $', 'Total Cost', 'Target Margin %', 'Sale Price to Hit Target', 'Builder Margin %']
+  ];
+  
+  const priceCalcWS = XLSX.utils.aoa_to_sheet(priceCalcData);
+  XLSX.utils.book_append_sheet(wb, priceCalcWS, 'Price Calculator');
+
+  // 6. SCOPE OF WORK sheet
+  const scopeData = [
+    ['Scope of work', '3 Year Program-Scope of Work', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''],
+    ['Total Qty', '600 Volt and below', '2026 Basic EPM', '2026 Full EPM', '2026 De-En', '2026 IR', '2026 UT', '2026 A-F', '2027 Basic EPM', '2027 Full EPM', '2027 De-En', '2027 IR', '2027 UT', '2027 A-F', '2028 Basic EPM', '2028 Full EPM', '2028 De-En', '2028 IR', '2028 UT', '2028 A-F'],
+    ['=C3', 'Switchgear - Incoming Main Service (Per Section)']
+  ];
+  
+  const scopeWS = XLSX.utils.aoa_to_sheet(scopeData);
+  XLSX.utils.book_append_sheet(wb, scopeWS, 'Scope of Work');
+
+  // 7. SUMMARY sheets (placeholder)
+  const createSummarySheet = (year) => {
+    const data = [
+      [`Equipment Summary — Year ${year}`, '', ''],
+      ['Equipment Type', 'Total Count', 'Total Hours'],
+      ['Switchgear - Incoming Main Service (Per Section)', '', ''],
+      ['Switchgear Insulated Case Breakers (Bus Mounted)', '', ''],
+      ['SwitchGear Drawout Breakers', '', '']
+    ];
+    return XLSX.utils.aoa_to_sheet(data);
+  };
+  
+  XLSX.utils.book_append_sheet(wb, createSummarySheet(1), 'Summary Yr1');
+  XLSX.utils.book_append_sheet(wb, createSummarySheet(2), 'Summary Yr2');
+  XLSX.utils.book_append_sheet(wb, createSummarySheet(3), 'Summary Yr3');
+
+  // Task breakdown sheets (simplified)
+  const createTaskSheet = (year) => {
+    const data = [
+      ['600 Volt and below', 'Basic EPM', 'Full EPM', 'De-energized', 'IR', 'Ultrasonic', 'A-F Collection', 'Total Hours', 'Total pcs.'],
+      ['Switchgear - Incoming Main Service (Per Section)', '', '', '', '', '', '', '', ''],
+      ['  Switchgear Insulated Case Breakers (Bus Mounted)', '', '', '', '', '', '', '', ''],
+      ['  SwitchGear Drawout Breakers', '', '', '', '', '', '', '', '']
+    ];
+    return XLSX.utils.aoa_to_sheet(data);
+  };
+  
+  XLSX.utils.book_append_sheet(wb, createTaskSheet(1), 'Yr1byTask');
+  XLSX.utils.book_append_sheet(wb, createTaskSheet(2), 'Yr2byTask');
+  XLSX.utils.book_append_sheet(wb, createTaskSheet(3), 'Yr3byTask');
+
+  // Room breakdown sheets (simplified)
+  const createRoomSheet = (year) => {
+    const data = [
+      ['600 Volt and below', '=\'Bldgs & Rooms\'!B2', '=\'Bldgs & Rooms\'!B3', '', 'Total Pcs'],
+      ['Switchgear - Incoming Main Service (Per Section)', '', '', '', '=SUM(B2:D2)'],
+      ['  Switchgear Insulated Case Breakers (Bus Mounted)', '', '', '', '=SUM(B3:D3)'],
+      ['  SwitchGear Drawout Breakers', '', '', '', '=SUM(B4:D4)']
+    ];
+    return XLSX.utils.aoa_to_sheet(data);
+  };
+  
+  XLSX.utils.book_append_sheet(wb, createRoomSheet(1), 'Yr1byRoom');
+  XLSX.utils.book_append_sheet(wb, createRoomSheet(2), 'Yr2byRoom');
+  XLSX.utils.book_append_sheet(wb, createRoomSheet(3), 'Yr3byRoom');
+
+  // Download
+  XLSX.writeFile(wb, `Sales_Builder_${currentSite.name}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  showNotification('✓ Sales Builder exported', 'green');
+}
+
+// Export functions to global scope
+window.exportEPMMaster = exportEPMMaster;
+window.exportSalesBuilder = exportSalesBuilder;
 
 
 </script>
