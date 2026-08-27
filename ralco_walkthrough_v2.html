@@ -150,26 +150,6 @@ label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
   </div>
 </div>
 
-<!-- ══════════════ FIREBASE LOGIN SCREEN ══════════════ -->
-<div id="login-screen" style="display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:100vh;background:var(--bg);padding:20px;gap:20px">
-  <div style="text-align:center;margin-bottom:30px">
-    <div style="font-size:48px;font-weight:800;letter-spacing:2px;color:var(--gold);margin-bottom:8px">LogiCurrent</div>
-    <div style="font-size:18px;color:var(--muted);letter-spacing:1px">M&amp;T+</div>
-  </div>
-  
-  <div style="width:100%;max-width:300px;background:var(--surface);padding:24px;border-radius:8px;border:1px solid var(--border)">
-    <h3 style="margin-bottom:16px;color:var(--gold);text-align:center">Crew Login</h3>
-    
-    <input type="email" id="login-email" placeholder="Email" style="width:100%;padding:10px;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px">
-    <input type="password" id="login-password" placeholder="Password" style="width:100%;padding:10px;margin-bottom:16px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px">
-    
-    <button onclick="crewLogin()" style="width:100%;padding:10px;background:var(--gold);color:#000;border:none;border-radius:4px;font-weight:700;cursor:pointer;margin-bottom:8px">Sign In</button>
-    <button onclick="toggleSignUp()" style="width:100%;padding:10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer">New Crew Member?</button>
-    
-    <div id="login-error" style="color:var(--red);font-size:12px;margin-top:12px;text-align:center;display:none"></div>
-  </div>
-</div>
-
 <!-- HEADER -->
 <header style="display:none" id="app-header">
   <div id="header-back" class="header-back" onclick="goBack()">‹ Back</div>
@@ -4181,5 +4161,25 @@ function toast(msg) {
 
 
 </script>
+
+<!-- ══════════════ FIREBASE LOGIN SCREEN ══════════════ -->
+<div id="login-screen" style="display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:100vh;background:var(--bg);padding:20px;gap:20px">
+  <div style="text-align:center;margin-bottom:30px">
+    <div style="font-size:48px;font-weight:800;letter-spacing:2px;color:var(--gold);margin-bottom:8px">LogiCurrent</div>
+    <div style="font-size:18px;color:var(--muted);letter-spacing:1px">M&amp;T+</div>
+  </div>
+  
+  <div style="width:100%;max-width:300px;background:var(--surface);padding:24px;border-radius:8px;border:1px solid var(--border)">
+    <h3 style="margin-bottom:16px;color:var(--gold);text-align:center">Crew Login</h3>
+    
+    <input type="email" id="login-email" placeholder="Email" style="width:100%;padding:10px;margin-bottom:12px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px">
+    <input type="password" id="login-password" placeholder="Password" style="width:100%;padding:10px;margin-bottom:16px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:4px">
+    
+    <button onclick="crewLogin()" style="width:100%;padding:10px;background:var(--gold);color:#000;border:none;border-radius:4px;font-weight:700;cursor:pointer;margin-bottom:8px">Sign In</button>
+    <button onclick="toggleSignUp()" style="width:100%;padding:10px;background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:4px;cursor:pointer">New Crew Member?</button>
+    
+    <div id="login-error" style="color:var(--red);font-size:12px;margin-top:12px;text-align:center;display:none"></div>
+  </div>
+</div>
 </body>
 </html>
