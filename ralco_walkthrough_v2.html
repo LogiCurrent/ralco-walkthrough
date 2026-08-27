@@ -173,14 +173,14 @@
   </main>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js" defer></script>
-<script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-auth-compat.js" defer></script>
-<script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-database-compat.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.5.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-<script defer>
+<script>
 // ═══════════════════════════════════════════════════════
-// FIREBASE INIT
+// FIREBASE INIT (runs AFTER libraries load)
 // ═══════════════════════════════════════════════════════
 
 const firebaseConfig = {
@@ -200,6 +200,9 @@ const db = firebase.database();
 let currentUser = null;
 let currentUserEmail = '';
 let currentSite = null;
+</script>
+
+<script>
 
 // ═══════════════════════════════════════════════════════
 // AUTH FUNCTIONS
