@@ -1152,14 +1152,15 @@ const CODE_VIOLATIONS = [
 // INIT
 // ═══════════════════════════════════════════════════════
 window.onload = () => {
-  // Auto-clear localStorage on startup - rely only on backend/database
-  localStorage.clear();
+  // Don't clear localStorage - Firebase auth uses it for session persistence
   
   // Keyboard shortcut to clear cache: Ctrl+Shift+K (backup)
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'K') {
-      localStorage.clear();
-      location.reload();
+      if (confirm('Clear all local data?')) {
+        localStorage.clear();
+        location.reload();
+      }
       return;
     }
   });
