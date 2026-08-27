@@ -551,42 +551,31 @@ let pendingUsers = {};
 // FIREBASE AUTHENTICATION
 // ══════════════════════════════════════════════════════
 
-function toggleSignUp() {
-  const loginScreen = document.getElementById('login-screen');
-  const email = document.getElementById('login-email');
-  const password = document.getElementById('login-password');
-  const signInBtn = loginScreen.querySelector('button:nth-child(3)');
-  const toggleBtn = event.target;
+function crewLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorDiv = document.getElementById('login-error');
   
-  if (loginScreen.dataset.mode === 'signin') {
-    loginScreen.dataset.mode = 'signup';
-    toggleBtn.textContent = 'Already have account?';
-    email.placeholder = 'Enter new email';
-    password.placeholder = 'Create password (6+ chars)';
-    signInBtn.textContent = 'Create Account';
-    signInBtn.onclick = function() { crewSignUp(); };
-  } else {
-    loginScreen.dataset.mode = 'signin';
-    toggleBtn.textContent = 'New Crew Member?';
-    email.placeholder = 'Email';
-    password.placeholder = 'Password';
-    signInBtn.textContent = 'Sign In';
-    signInBtn.onclick = function() { crewLogin(); };
+  if (!email || !password) {
+    errorDiv.textContent = 'Email and password required';
+    errorDiv.style.display = 'block';
+    return;
   }
-}
-
-function crewLogout() {
-  auth.signOut().then(() => {
-    currentUser = null;
-    currentUserEmail = '';
-    document.getElementById('login-screen').style.display = 'flex';
-    document.getElementById('app-header').style.display = 'none';
-    document.getElementById('logout-btn').style.display = 'none';
-    document.getElementById('login-email').value = '';
-    document.getElementById('login-password').value = '';
-    document.getElementById('login-error').style.display = 'none';
-    toast('Logged out');
-  });
+  
+  auth.signInWithEmailAndPassword(email, password)
+    .then(user => {
+      currentUser = user.user;
+      currentUserEmail = user.user.email;
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app-header').style.display = 'flex';
+      document.getElementById('logout-btn').style.display = 'block';
+      document.getElementById('header-label').textContent = currentUserEmail;
+      loadSitesFromFirebase();
+    })
+    .catch(err => {
+      errorDiv.textContent = err.message;
+      errorDiv.style.display = 'block';
+    });
 }
 
 function crewSignUp() {
@@ -604,16 +593,11 @@ function crewSignUp() {
     .then(user => {
       currentUser = user.user;
       currentUserEmail = user.user.email;
-      if (crewWhitelist.includes(email)) {
-        showLoginSuccess();
-      } else {
-        db.ref('pendingUsers/' + user.user.uid).set({
-          email: email,
-          createdAt: new Date().toISOString(),
-          status: 'pending'
-        });
-        showPendingApproval(email);
-      }
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app-header').style.display = 'flex';
+      document.getElementById('logout-btn').style.display = 'block';
+      document.getElementById('header-label').textContent = currentUserEmail;
+      loadSitesFromFirebase();
     })
     .catch(err => {
       errorDiv.textContent = err.message;
@@ -621,74 +605,52 @@ function crewSignUp() {
     });
 }
 
-function crewLogin() {
-  const email = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-password').value;
-  const errorDiv = document.getElementById('login-error');
+function toggleSignUp() {
+  const btn = event.target;
+  const emailInput = document.getElementById('login-email');
+  const passwordInput = document.getElementById('login-password');
+  const submitBtn = Array.from(document.querySelectorAll('#login-screen button')).find(b => b.textContent.includes('Sign'));
   
-  if (!email || !password) {
-    errorDiv.textContent = 'Email and password required';
-    errorDiv.style.display = 'block';
-    return;
+  if (btn.dataset.mode === 'login') {
+    btn.dataset.mode = 'signup';
+    btn.textContent = 'Back to Login';
+    emailInput.placeholder = 'Enter new email';
+    passwordInput.placeholder = 'Create password (6+ chars)';
+    submitBtn.textContent = 'Create Account';
+    submitBtn.onclick = function() { crewSignUp(); };
+  } else {
+    btn.dataset.mode = 'login';
+    btn.textContent = 'New Crew Member?';
+    emailInput.placeholder = 'Email';
+    passwordInput.placeholder = 'Password';
+    submitBtn.textContent = 'Sign In';
+    submitBtn.onclick = function() { crewLogin(); };
   }
-  
-  auth.signInWithEmailAndPassword(email, password)
-    .then(user => {
-      currentUser = user.user;
-      currentUserEmail = user.user.email;
-      if (crewWhitelist.includes(email)) {
-        showLoginSuccess();
-        return;
-      }
-      db.ref('pendingUsers/' + user.user.uid).once('value', snapshot => {
-        const userData = snapshot.val();
-        if (userData && userData.status === 'approved') {
-          showLoginSuccess();
-        } else {
-          showPendingApproval(email);
-        }
-      });
-    })
-    .catch(err => {
-      errorDiv.textContent = err.message;
-      errorDiv.style.display = 'block';
-    });
 }
 
-function showPendingApproval(email) {
-  const loginScreen = document.getElementById('login-screen');
-  loginScreen.querySelector('div[style*="max-width"]').innerHTML = `
-    <h3 style="margin-bottom:16px;color:var(--gold);text-align:center">Awaiting Approval</h3>
-    <p style="color:var(--muted);font-size:12px;text-align:center;margin-bottom:16px">Your account is pending approval. Check back soon!</p>
-    <button onclick="location.reload()" style="width:100%;padding:10px;background:var(--gold);color:#000;border:none;border-radius:4px;font-weight:700;cursor:pointer">Refresh</button>
-  `;
-}
-
-function showLoginSuccess() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app-header').style.display = 'flex';
-  document.getElementById('logout-btn').style.display = 'block';
-  document.getElementById('header-label').textContent = currentUserEmail;
-  loadSitesFromFirebase();
+function crewLogout() {
+  auth.signOut().then(() => {
+    currentUser = null;
+    currentUserEmail = '';
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('app-header').style.display = 'none';
+    document.getElementById('logout-btn').style.display = 'none';
+    document.getElementById('login-email').value = '';
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-error').textContent = '';
+    toast('Logged out');
+  });
 }
 
 auth.onAuthStateChanged(user => {
   if (user) {
     currentUser = user;
     currentUserEmail = user.email;
-    if (crewWhitelist.includes(user.email)) {
-      showLoginSuccess();
-      return;
-    }
-    db.ref('pendingUsers/' + user.uid).once('value', snapshot => {
-      const userData = snapshot.val();
-      if (userData && userData.status === 'approved') {
-        showLoginSuccess();
-      } else {
-        document.getElementById('login-screen').style.display = 'flex';
-        document.getElementById('app-header').style.display = 'none';
-      }
-    });
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-header').style.display = 'flex';
+    document.getElementById('logout-btn').style.display = 'block';
+    document.getElementById('header-label').textContent = user.email;
+    loadSitesFromFirebase();
   } else {
     document.getElementById('login-screen').style.display = 'flex';
     document.getElementById('app-header').style.display = 'none';
